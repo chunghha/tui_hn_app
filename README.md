@@ -35,10 +35,16 @@ src/
 - Keyboard-driven navigation (vi-like keys)
 - Story details and comments view
 - Inline article viewing (fetched and rendered as plain text)
+- **In-memory caching with TTL** — reduces API calls and improves performance
+  - Story cache (5 min TTL)
+  - Comment cache (5 min TTL)  
+  - Article cache (15 min TTL)
 - Theme loading from JSON files; theme preview in top-right header
 - Version shown in the list title to make builds traceable from the UI
 - Search/filter stories in the list
 - Incremental loading with "Load More" and "Load All" behaviors
+- Comment pagination with smooth line-by-line scrolling
+- Keyboard shortcuts help (`?` key)
 
 ## Screenshots
 
@@ -129,6 +135,38 @@ If you prefer direct cargo commands:
 
 - Drop JSON theme files into `./themes`. The app discovers themes and will list available variants (dark/light).
 - You can cycle themes with `t`. The active theme name is shown top-right.
+
+## Performance
+
+### In-Memory Caching
+
+The app implements an in-memory cache with TTL (Time To Live) to reduce API calls and improve responsiveness:
+
+**Cache Types:**
+- **Story Cache**: 5-minute TTL
+  - Caches individual story metadata (title, score, author, etc.)
+  - Reduces repeated API calls when navigating back to previously viewed stories
+  
+- **Comment Cache**: 5-minute TTL
+  - Caches comment content
+  - Faster loading when revisiting story discussions
+  
+- **Article Cache**: 15-minute TTL
+  - Caches fetched article content
+  - Articles are less frequently updated, so longer TTL is appropriate
+
+**How it works:**
+1. **First request**: Fetches from Hacker News API → stores in cache
+2. **Subsequent requests** (within TTL): Returns from cache instantly
+3. **After expiration**: Automatically fetches fresh data from API
+
+**Benefits:**
+- ⚡ **Instant loading** for recently viewed content
+- 🌐 **Reduced network traffic** and API load
+- 💾 **Lower bandwidth usage** on metered connections
+- 🔄 **Automatic refresh** ensures data doesn't go stale
+
+The cache is thread-safe and transparent to users — no configuration required.
 
 ## Testing
 

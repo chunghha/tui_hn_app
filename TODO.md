@@ -1,6 +1,6 @@
 # TUI Hacker News App - Development Roadmap
 
-> **Current Version**: 0.3.2 (in development)  
+> **Current Version**: 0.3.3 (in development)  
 > See [Version Planning](#version-planning) section below for the full roadmap.
 
 ## ✅ Completed Items
@@ -25,9 +25,10 @@
   - Added "Load More Comments" action (press `n`)
   - Shows comment count vs loaded count
   
-- [ ] **Caching Layer**: Cache fetched stories and articles to reduce API calls
+- [x] **Caching Layer**: Cache fetched stories and articles to reduce API calls
+  - ✅ Implemented in v0.3.3
   - In-memory cache with TTL
-  - Persistent cache to disk (optional)
+  - Persistent cache to disk (optional - not implemented)
   - Cache invalidation strategy
 
 - [x] **Progress Indicators**: Improve loading feedback

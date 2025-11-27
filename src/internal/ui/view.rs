@@ -6,6 +6,7 @@ use ratatui::prelude::Alignment;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap};
+use textwrap;
 
 use super::app::{App, InputMode, ViewMode};
 
@@ -184,7 +185,7 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.story_list_state);
 }
 
-fn render_detail(app: &App, f: &mut Frame, area: Rect) {
+fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
     if let Some(story) = &app.selected_story {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -224,35 +225,44 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
             .wrap(Wrap { trim: true });
         f.render_widget(p, chunks[0]);
 
-        let comments_text: Vec<ListItem> = app
-            .comments
-            .iter()
-            .map(|c| {
-                let author = c.by.as_deref().unwrap_or("unknown");
-                let text = c.text.as_deref().unwrap_or("[deleted]");
-                let clean_text = crate::utils::html::extract_text_from_html(text);
-                let time = c
-                    .time
-                    .as_ref()
-                    .map(crate::utils::datetime::format_timestamp)
-                    .unwrap_or_else(|| "unknown".to_string());
+        let comment_area_width = chunks[1].width.saturating_sub(4).max(20) as usize; // Ensure minimum width
 
-                ListItem::new(vec![
-                    Line::from(vec![
-                        Span::styled(author, Style::default().fg(app.theme.comment_author)),
-                        Span::styled(
-                            format!(" ({})", time),
-                            Style::default().fg(app.theme.comment_time),
-                        ),
-                    ]),
-                    Line::from(Span::styled(
-                        clean_text,
-                        Style::default().fg(app.theme.foreground),
-                    )),
-                    Line::from(Span::styled("---", Style::default().fg(app.theme.border))),
-                ])
-            })
-            .collect();
+        let mut all_lines: Vec<Line> = Vec::new();
+        for c in &app.comments {
+            let author = c.by.as_deref().unwrap_or("unknown");
+            let text = c.text.as_deref().unwrap_or("[deleted]");
+            let clean_text = crate::utils::html::extract_text_from_html(text);
+            let time = c
+                .time
+                .as_ref()
+                .map(crate::utils::datetime::format_timestamp)
+                .unwrap_or_else(|| "unknown".to_string());
+
+            // Author and time line
+            all_lines.push(Line::from(vec![
+                Span::styled(author, Style::default().fg(app.theme.comment_author)),
+                Span::styled(
+                    format!(" ({})", time),
+                    Style::default().fg(app.theme.comment_time),
+                ),
+            ]));
+
+            // Wrapped text lines
+            let wrapped_text = textwrap::wrap(&clean_text, comment_area_width);
+            for line in wrapped_text {
+                all_lines.push(Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(app.theme.foreground),
+                )));
+            }
+
+            // Separator
+            all_lines.push(Line::from(Span::styled(
+                "---",
+                Style::default().fg(app.theme.border),
+            )));
+            all_lines.push(Line::from("")); // Empty line for spacing
+        }
 
         let comments_title = if app.comment_ids.is_empty() {
             "Comments (Tab to view Article)".to_string()
@@ -264,8 +274,9 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
             )
         };
 
-        let list = List::new(comments_text)
+        let paragraph = Paragraph::new(all_lines)
             .style(Style::default().bg(app.theme.background))
+            .scroll((app.comments_scroll as u16, 0))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -274,7 +285,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
                     .title(comments_title)
                     .title_style(Style::default().fg(app.theme.foreground)),
             );
-        f.render_widget(list, chunks[1]);
+        f.render_widget(paragraph, chunks[1]);
     }
 }
 

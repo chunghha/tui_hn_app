@@ -1,3 +1,4 @@
+use crate::internal::cache::Cache;
 use crate::internal::models::{Comment, Story};
 use anyhow::{Context, Result};
 use html2text::from_read; // Added for fetch_article_content
@@ -51,6 +52,9 @@ pub fn get_story_list_url(list_type: StoryListType) -> String {
 #[derive(Clone)]
 pub struct ApiService {
     client: Client,
+    story_cache: Cache<u32, Story>,
+    comment_cache: Cache<u32, Comment>,
+    article_cache: Cache<String, String>,
     #[cfg(test)]
     base_url: Option<String>,
 }
@@ -60,6 +64,9 @@ impl ApiService {
     pub fn new() -> Self {
         Self {
             client: Client::new(),
+            story_cache: Cache::new(Duration::from_secs(300)), // 5 minutes
+            comment_cache: Cache::new(Duration::from_secs(300)), // 5 minutes
+            article_cache: Cache::new(Duration::from_secs(900)), // 15 minutes
             #[cfg(test)]
             base_url: None,
         }
@@ -69,6 +76,9 @@ impl ApiService {
     pub fn with_base_url(base_url: String) -> Self {
         Self {
             client: Client::new(),
+            story_cache: Cache::new(Duration::from_secs(300)),
+            comment_cache: Cache::new(Duration::from_secs(300)),
+            article_cache: Cache::new(Duration::from_secs(900)),
             base_url: Some(base_url),
         }
     }
@@ -107,19 +117,47 @@ impl ApiService {
 
     /// Fetch a single story item by id.
     pub fn fetch_story_content(&self, id: u32) -> Result<Story> {
+        // Check cache first
+        if let Some(story) = self.story_cache.get(&id) {
+            return Ok(story);
+        }
+
+        // Fetch from API
         let url = format!("{}item/{}.json", self.get_base_url(), id);
-        self.get_json(&url)
-            .with_context(|| format!("fetch_story_content failed for id {}", id))
+        let story: Story = self
+            .get_json(&url)
+            .with_context(|| format!("fetch_story_content failed for id {}", id))?;
+
+        // Cache the result
+        self.story_cache.set(id, story.clone());
+        Ok(story)
     }
 
     /// Fetch a single comment item by id.
     pub fn fetch_comment_content(&self, id: u32) -> Result<Comment> {
+        // Check cache first
+        if let Some(comment) = self.comment_cache.get(&id) {
+            return Ok(comment);
+        }
+
+        // Fetch from API
         let url = format!("{}item/{}.json", self.get_base_url(), id);
-        self.get_json(&url)
-            .with_context(|| format!("fetch_comment_content failed for id {}", id))
+        let comment: Comment = self
+            .get_json(&url)
+            .with_context(|| format!("fetch_comment_content failed for id {}", id))?;
+
+        // Cache the result
+        self.comment_cache.set(id, comment.clone());
+        Ok(comment)
     }
 
     pub fn fetch_article_content(&self, url: &str) -> Result<String> {
+        // Check cache first
+        if let Some(content) = self.article_cache.get(&url.to_string()) {
+            return Ok(content);
+        }
+
+        // Fetch from web
         let response = self
             .client
             .get(url)
@@ -128,7 +166,10 @@ impl ApiService {
             .context("Failed to fetch article")?;
 
         let bytes = response.bytes().context("Failed to get response bytes")?;
-        let text = from_read(&bytes[..], 80).context("Failed to convert HTML to text")?; // 80 chars width for now, will wrap in UI anyway
+        let text = from_read(&bytes[..], 80).context("Failed to convert HTML to text")?;
+
+        // Cache the result
+        self.article_cache.set(url.to_string(), text.clone());
         Ok(text)
     }
 }

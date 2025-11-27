@@ -78,6 +78,8 @@ pub struct App {
     pub comment_ids: Vec<u32>,
     pub loaded_comments_count: usize,
     pub comments_loading: bool,
+    /// Scroll offset for comments view (line-by-line scrolling)
+    pub comments_scroll: usize,
     pub article_content: Option<String>,
     pub article_for_story_id: Option<u32>,
     pub article_loading: bool,
@@ -171,6 +173,7 @@ impl App {
             comment_ids: Vec::new(),
             loaded_comments_count: 0,
             comments_loading: false,
+            comments_scroll: 0,
             article_content: None,
             article_for_story_id: None,
             article_loading: false,
@@ -622,8 +625,22 @@ impl App {
     async fn handle_action(&mut self, action: Action) {
         match action {
             Action::Quit => self.running = false,
-            Action::NavigateUp => self.select_prev(),
-            Action::NavigateDown => self.select_next(),
+            Action::NavigateUp => {
+                if self.view_mode == ViewMode::StoryDetail {
+                    // Scroll up in comments
+                    self.comments_scroll = self.comments_scroll.saturating_sub(1);
+                } else {
+                    self.select_prev();
+                }
+            }
+            Action::NavigateDown => {
+                if self.view_mode == ViewMode::StoryDetail {
+                    // Scroll down in comments
+                    self.comments_scroll = self.comments_scroll.saturating_add(1);
+                } else {
+                    self.select_next();
+                }
+            }
             Action::Enter => {
                 if let Some(index) = self.story_list_state.selected() {
                     // Map the selected index (which refers to the displayed/filtered list)
@@ -662,6 +679,9 @@ impl App {
                 self.comments.clear();
                 self.comment_ids.clear();
                 self.loaded_comments_count = 0;
+                // Reset comment list state so when returning to a story later the
+                // comments view doesn't retain a prior selection/scroll.
+                self.comments_scroll = 0;
             }
             Action::OpenBrowser => {
                 if let Some(story) = &self.selected_story {
@@ -856,6 +876,8 @@ impl App {
                 self.view_mode = ViewMode::Article;
                 self.comments_loading = true;
                 self.comments.clear();
+                // Ensure comments view will start at the top for this story.
+                self.comments_scroll = 0;
 
                 // Reset article-related state so that we always fetch for the newly selected story.
                 self.article_content = None;
@@ -914,9 +936,16 @@ impl App {
                 }
             }
             Action::CommentsLoaded(comments) => {
+                // If we had no comments loaded before, ensure the comments list state
+                // starts at the top when the first batch arrives.
+                let initial_loaded = self.loaded_comments_count;
                 self.loaded_comments_count += comments.len();
                 self.comments.extend(comments);
                 self.comments_loading = false;
+                if initial_loaded == 0 {
+                    // Reset scroll to top for first batch
+                    self.comments_scroll = 0;
+                }
             }
             Action::LoadMoreComments => {
                 if self.comments_loading || self.comment_ids.is_empty() {
