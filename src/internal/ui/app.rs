@@ -14,13 +14,7 @@ use crate::internal::models::{Comment, Story};
 use crate::utils::theme_loader::{TuiTheme, load_theme};
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::prelude::Alignment;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap,
-};
+use ratatui::widgets::ListState;
 
 /// Application view modes.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -280,7 +274,7 @@ impl App {
 
     /// Centralized theme selection logic extracted from `new`.
     /// Returns (TuiTheme, selected_index) for the given config and discovered themes.
-    fn select_theme_from_config(
+    pub fn select_theme_from_config(
         config: &crate::config::AppConfig,
         available_themes: &[(String, String)],
         terminal_mode: &str,
@@ -1003,7 +997,7 @@ impl App {
     /// Return a vector of (original_index, &Story) representing the currently-displayed stories
     /// after applying the search filter. This ensures selection indices used by `ListState`
     /// correspond to the displayed items.
-    fn filtered_story_indices(&self) -> Vec<(usize, &Story)> {
+    pub fn filtered_story_indices(&self) -> Vec<(usize, &Story)> {
         if self.search_query.is_empty() {
             self.stories.iter().enumerate().collect()
         } else {
@@ -1060,493 +1054,8 @@ impl App {
         self.story_list_state.select(Some(i));
     }
 
-    fn ui(&mut self, f: &mut Frame) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
-            .split(f.area());
-
-        self.render_top_bar(f, chunks[0]);
-
-        match self.view_mode {
-            ViewMode::List => self.render_list(f, chunks[1]),
-            ViewMode::StoryDetail => self.render_detail(f, chunks[1]),
-            ViewMode::Article => self.render_article(f, chunks[1]),
-        }
-
-        self.render_status_bar(f, chunks[2]);
-
-        // Render search overlay if in search mode
-        if self.input_mode == InputMode::Search {
-            self.render_search_overlay(f);
-        }
-
-        // Render notification overlay if present
-        if self.notification_message.is_some() {
-            self.render_notification(f);
-        }
-
-        // Render progress overlay if loading all stories
-        if self.story_load_progress.is_some() {
-            self.render_progress_overlay(f);
-        }
-    }
-
-    fn render_progress_overlay(&self, f: &mut Frame) {
-        if let Some((loaded, total)) = self.story_load_progress {
-            let area = f.area();
-            let popup_width = 60.min(area.width - 4);
-            let popup_height = 5;
-            let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-            let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-            let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-            let block = Block::default()
-                .title("Loading all stories")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.theme.border));
-
-            let clear_area = block.inner(popup_area);
-            f.render_widget(Clear, clear_area);
-            f.render_widget(block, popup_area);
-
-            let gauge_area = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(0)])
-                .margin(1)
-                .split(popup_area)[0];
-
-            let percent = if total > 0 {
-                (loaded as f64 / total as f64 * 100.0) as u16
-            } else {
-                0
-            };
-
-            let gauge = ratatui::widgets::Gauge::default()
-                .block(Block::default().title(format!("{}/{}", loaded, total)))
-                .gauge_style(
-                    Style::default()
-                        .fg(self.theme.selection_bg)
-                        .bg(self.theme.background),
-                )
-                .percent(percent);
-
-            f.render_widget(gauge, gauge_area);
-        }
-    }
-
-    fn render_list(&mut self, f: &mut Frame, area: Rect) {
-        // Filter stories based on search query
-        let filtered_stories: Vec<_> = if self.search_query.is_empty() {
-            self.stories.iter().enumerate().collect()
-        } else {
-            let query = self.search_query.to_lowercase();
-            self.stories
-                .iter()
-                .enumerate()
-                .filter(|(_, story)| {
-                    story
-                        .title
-                        .as_ref()
-                        .map(|t| t.to_lowercase().contains(&query))
-                        .unwrap_or(false)
-                })
-                .collect()
-        };
-
-        let items: Vec<ListItem> = filtered_stories
-            .iter()
-            .map(|(_, story)| {
-                let title = story.title.as_deref().unwrap_or("No Title");
-                let score = story.score.unwrap_or(0);
-                let by = story.by.as_deref().unwrap_or("unknown");
-                let comments = story.descendants.unwrap_or(0);
-
-                let time = story
-                    .time
-                    .as_ref()
-                    .map(crate::utils::datetime::format_timestamp)
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                let content = Line::from(vec![
-                    Span::styled(format!("{} ", score), Style::default().fg(self.theme.score)),
-                    Span::styled(title, Style::default().fg(self.theme.foreground)),
-                    Span::styled(
-                        format!(" ({} comments by {} | {})", comments, by, time),
-                        Style::default().fg(self.theme.comment_time),
-                    ),
-                ]);
-                ListItem::new(content)
-            })
-            .collect();
-
-        // Place the version next to the "Hacker News" label in the title
-        let title = if self.search_query.is_empty() {
-            format!(
-                "Hacker News v{} - {}",
-                self.app_version, self.current_list_type
-            )
-        } else {
-            format!(
-                "Hacker News v{} - {} (Filter: {})",
-                self.app_version, self.current_list_type, self.search_query
-            )
-        };
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
-                    .border_style(Style::default().fg(self.theme.border))
-                    .title(title)
-                    .title_style(Style::default().fg(self.theme.foreground)),
-            )
-            .style(Style::default().bg(self.theme.background))
-            .highlight_style(
-                Style::default()
-                    .bg(self.theme.selection_bg)
-                    .fg(self.theme.selection_fg)
-                    .add_modifier(Modifier::BOLD),
-            );
-
-        f.render_stateful_widget(list, area, &mut self.story_list_state);
-    }
-
-    fn render_detail(&self, f: &mut Frame, area: Rect) {
-        if let Some(story) = &self.selected_story {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(5), Constraint::Min(0)])
-                .split(area);
-
-            let title = story.title.as_deref().unwrap_or("No Title");
-            let url = story.url.as_deref().unwrap_or("No URL");
-            let time = story
-                .time
-                .as_ref()
-                .map(crate::utils::datetime::format_timestamp)
-                .unwrap_or_else(|| "unknown".to_string());
-            let text = format!(
-                "Title: {}\nURL: {}\nScore: {}\nBy: {}\nTime: {}",
-                title,
-                url,
-                story.score.unwrap_or(0),
-                story.by.as_deref().unwrap_or("unknown"),
-                time
-            );
-
-            let p = Paragraph::new(text)
-                .style(
-                    Style::default()
-                        .fg(self.theme.foreground)
-                        .bg(self.theme.background),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Story Details")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                )
-                .wrap(Wrap { trim: true });
-            f.render_widget(p, chunks[0]);
-
-            let comments_text: Vec<ListItem> = self
-                .comments
-                .iter()
-                .map(|c| {
-                    let author = c.by.as_deref().unwrap_or("unknown");
-                    let text = c.text.as_deref().unwrap_or("[deleted]");
-                    let clean_text = crate::utils::html::extract_text_from_html(text);
-                    let time = c
-                        .time
-                        .as_ref()
-                        .map(crate::utils::datetime::format_timestamp)
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    ListItem::new(vec![
-                        Line::from(vec![
-                            Span::styled(author, Style::default().fg(self.theme.comment_author)),
-                            Span::styled(
-                                format!(" ({})", time),
-                                Style::default().fg(self.theme.comment_time),
-                            ),
-                        ]),
-                        Line::from(Span::styled(
-                            clean_text,
-                            Style::default().fg(self.theme.foreground),
-                        )),
-                        Line::from(Span::styled("---", Style::default().fg(self.theme.border))),
-                    ])
-                })
-                .collect();
-
-            let list = List::new(comments_text)
-                .style(Style::default().bg(self.theme.background))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Comments (Tab to view Article)")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                );
-            f.render_widget(list, chunks[1]);
-        }
-    }
-
-    fn render_article(&self, f: &mut Frame, area: Rect) {
-        // If we have a selected story, show the same metadata block as in the detail view
-        if let Some(story) = &self.selected_story {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(5), Constraint::Min(0)])
-                .split(area);
-
-            let title = story.title.as_deref().unwrap_or("No Title");
-            let url = story.url.as_deref().unwrap_or("No URL");
-            let time = story
-                .time
-                .as_ref()
-                .map(crate::utils::datetime::format_timestamp)
-                .unwrap_or_else(|| "unknown".to_string());
-            let meta_text = format!(
-                "Title: {}\nURL: {}\nScore: {}\nBy: {}\nTime: {}",
-                title,
-                url,
-                story.score.unwrap_or(0),
-                story.by.as_deref().unwrap_or("unknown"),
-                time
-            );
-
-            let meta_p = Paragraph::new(meta_text)
-                .style(
-                    Style::default()
-                        .fg(self.theme.foreground)
-                        .bg(self.theme.background),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Story Details")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                )
-                .wrap(Wrap { trim: true });
-            f.render_widget(meta_p, chunks[0]);
-
-            let content = if self.article_loading {
-                "Loading article...".to_string()
-            } else {
-                self.article_content
-                    .clone()
-                    .unwrap_or_else(|| "No content available or failed to load.".to_string())
-            };
-
-            let p = Paragraph::new(content)
-                .style(
-                    Style::default()
-                        .fg(self.theme.foreground)
-                        .bg(self.theme.background),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Article View (Tab to view Comments)")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                )
-                .wrap(Wrap { trim: true })
-                .scroll((self.article_scroll as u16, 0));
-            f.render_widget(p, chunks[1]);
-        } else {
-            // Fallback: no selected story, render the article content as before
-            let content = if self.article_loading {
-                "Loading article...".to_string()
-            } else {
-                self.article_content
-                    .clone()
-                    .unwrap_or_else(|| "No content available or failed to load.".to_string())
-            };
-
-            let p = Paragraph::new(content)
-                .style(
-                    Style::default()
-                        .fg(self.theme.foreground)
-                        .bg(self.theme.background),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Article View (Tab to view Comments)")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                )
-                .wrap(Wrap { trim: true })
-                .scroll((self.article_scroll as u16, 0));
-            f.render_widget(p, area);
-        }
-    }
-
-    fn render_top_bar(&self, f: &mut Frame, area: Rect) {
-        let theme_name = if !self.available_themes.is_empty() {
-            let (path, mode) = &self.available_themes[self.current_theme_index];
-            let filename = Path::new(path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown");
-            format!("Theme: {} ({})", filename, mode)
-        } else {
-            String::new()
-        };
-
-        // Show theme and auto-switch status in the top-right corner
-        let auto_status = if self.config.auto_switch_dark_to_light {
-            "Auto:On"
-        } else {
-            "Auto:Off"
-        };
-        let top_bar_text = format!("{}  {}", theme_name, auto_status);
-
-        let p = Paragraph::new(top_bar_text)
-            .alignment(Alignment::Right)
-            .block(
-                Block::default()
-                    .padding(Padding::horizontal(1))
-                    .style(Style::default().bg(self.theme.background)),
-            )
-            .style(Style::default().fg(self.theme.foreground));
-        f.render_widget(p, area);
-    }
-
-    fn render_status_bar(&self, f: &mut Frame, area: Rect) {
-        let status = if self.loading || self.comments_loading || self.article_loading {
-            "Loading...".to_string()
-        } else if self.input_mode == InputMode::Search {
-            // Simplified status bar for search mode
-            "Search: Type to filter | Enter/Esc: Finish | Ctrl+C: Clear".to_string()
-        } else {
-            match self.view_mode {
-                ViewMode::List => {
-                    let loaded_info = if !self.story_ids.is_empty() {
-                        format!(" | {}/{}", self.loaded_count, self.story_ids.len())
-                    } else {
-                        String::new()
-                    };
-                    let filter_hint = if !self.search_query.is_empty() {
-                        format!(" | Filter: {}", self.search_query)
-                    } else {
-                        String::new()
-                    };
-                    let clear_hint = if !self.search_query.is_empty() {
-                        " | C: Clear"
-                    } else {
-                        ""
-                    };
-                    format!(
-                        "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | t: Theme | q: Quit{}{}{}",
-                        loaded_info, filter_hint, clear_hint
-                    )
-                }
-                ViewMode::StoryDetail => {
-                    "Esc/q: Back | o: Browser | Tab: Article | t: Theme".to_string()
-                }
-                ViewMode::Article => {
-                    "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme".to_string()
-                }
-            }
-        };
-
-        let p = Paragraph::new(status)
-            .block(
-                Block::default()
-                    .padding(Padding::horizontal(1))
-                    .style(Style::default().bg(self.theme.selection_bg)),
-            )
-            .style(Style::default().fg(self.theme.selection_fg));
-        f.render_widget(p, area);
-    }
-
-    fn render_notification(&self, f: &mut Frame) {
-        if let Some(msg) = &self.notification_message {
-            let area = f.area();
-
-            // Create centered popup
-            let popup_width = (msg.len() as u16 + 4).min(area.width - 4);
-            let popup_height = 3;
-
-            let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-            let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-            let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-            // Clear background
-            let popup = Paragraph::new(msg.as_str())
-                .style(
-                    Style::default()
-                        .bg(self.theme.selection_bg)
-                        .fg(self.theme.selection_fg)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(self.theme.border))
-                        .title("Info")
-                        .title_style(Style::default().fg(self.theme.foreground)),
-                )
-                .alignment(Alignment::Center);
-
-            f.render_widget(Clear, popup_area);
-            f.render_widget(popup, popup_area);
-        }
-    }
-
-    fn render_search_overlay(&self, f: &mut Frame) {
-        let area = f.area();
-
-        // Create search box at the top center
-        let search_width = 60.min(area.width - 4);
-        let search_height = 3;
-
-        let search_x = (area.width.saturating_sub(search_width)) / 2;
-        let search_y = (area.height.saturating_sub(search_height)) / 2; // Centered vertically
-
-        let search_area = Rect::new(search_x, search_y, search_width, search_height);
-
-        // Display the search query with cursor
-        let display_text = format!("{}█", self.search_query); // █ as cursor
-
-        let search_box = Paragraph::new(display_text)
-            .style(
-                Style::default()
-                    .fg(self.theme.foreground)
-                    .bg(self.theme.background),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.selection_bg))
-                    .title(" Search (Esc to cancel) ")
-                    .title_style(
-                        Style::default()
-                            .fg(self.theme.selection_fg)
-                            .bg(self.theme.selection_bg)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-            );
-
-        f.render_widget(Clear, search_area);
-        f.render_widget(search_box, search_area);
+    pub fn ui(&mut self, f: &mut Frame) {
+        super::view::draw(self, f);
     }
 }
 
@@ -1599,41 +1108,35 @@ mod tests {
             ("./themes/gruvbox.json".to_string(), "light".to_string()),
         ];
 
-        // Pass a non-ghost TERM value explicitly
+        // Terminal mode argument (runtime detection) - pass non-ghost TERM
         let term_env = "xterm-256color";
-
-        // Even if runtime terminal_mode string is "dark", the presence of TERM not matching ghost
-        // and auto_switch true should result in choosing the light variant.
         let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "dark", term_env);
 
-        // We expect the light variant to be chosen (index 1)
+        // Should select the light variant (index 1) because auto-switch is on
         assert_eq!(
             idx, 1,
-            "Expected light variant to be chosen when auto-switch is enabled and TERM != ghost_term_name"
+            "Expected light variant to be chosen when TERM is not ghost and auto-switch is on"
         );
     }
 
     #[test]
     fn fallback_to_runtime_mode_when_no_requested_variant() {
-        // If config requests a base name without Dark/Light token, prefer runtime terminal_mode.
+        // Request "Unknown Theme" (doesn't exist). Should fallback to terminal mode (dark).
         let mut cfg = AppConfig::default();
-        cfg.theme_name = "Gruvbox".to_string();
-        cfg.ghost_term_name = "xterm-ghostty".to_string();
-        cfg.auto_switch_dark_to_light = true;
+        cfg.theme_name = "Unknown Theme".to_string();
 
         let available = vec![
             ("./themes/gruvbox.json".to_string(), "dark".to_string()),
             ("./themes/gruvbox.json".to_string(), "light".to_string()),
         ];
 
-        // Pass a non-ghost TERM value explicitly and runtime_mode 'light'
         let term_env = "xterm-256color";
-        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "light", term_env);
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "dark", term_env);
 
-        // Expect index 1 (light) to be preferred when runtime terminal_mode == light
+        // Should select the dark variant (index 0) because terminal_mode is "dark"
         assert_eq!(
-            idx, 1,
-            "Expected runtime matching variant (light) when no explicit token in config"
+            idx, 0,
+            "Expected fallback to terminal mode (dark) when theme not found"
         );
     }
 }

@@ -1,15 +1,11 @@
 mod api;
-mod app;
 mod config;
 mod internal;
 mod tui;
 mod utils;
 
-// Legacy state module - to be removed or refactored
-// mod state;
-
 use anyhow::Result;
-use app::App;
+use internal::ui::app::App;
 
 #[tokio::main]
 async fn main() -> Result<()> {

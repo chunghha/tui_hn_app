@@ -49,7 +49,7 @@ src/
 | ![List View](screenshots/list_view.png)  | ![Article View](screenshots/article_view.png) | ![Comments View](screenshots/comments_view.png) |
 | Hacker News Category List | Article content for a selected story | Comments for the selected story |
 
-Note: These screenshots were taken with version `v0.1.0`. Subsequent UI enhancements were made after that release, so the current app appearance may differ from the images shown here.
+Note: These screenshots were taken with version `v0.2.2`. Subsequent UI enhancements were made after that release, so the current app appearance may differ from the images shown here.
 
 ## Configuration
 
