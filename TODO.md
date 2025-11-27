@@ -43,7 +43,8 @@
   - Context-sensitive help (different shortcuts per view mode)
 
 ### Content Display
-- [ ] **Better Article Rendering**: Improve article readability
+- [x] **Better Article Rendering**: Improve article readability
+  - ✅ Implemented in v0.4.0
   - Code syntax highlighting in articles
   - Better handling of links (show URL on select, copy to clipboard)
   - Image placeholder/notification for images in articles

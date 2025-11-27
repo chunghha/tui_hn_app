@@ -1,11 +1,11 @@
 use crate::internal::cache::Cache;
-use crate::internal::models::{Comment, Story};
+use crate::internal::models::{Article, Comment, Story};
+use crate::utils::html_parser::parse_article_html;
 use anyhow::{Context, Result};
-use html2text::from_read; // Added for fetch_article_content
 use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-use strum_macros::Display; // Added for fetch_article_content
+use strum_macros::Display;
 
 /// Types of Hacker News story lists we can fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
@@ -54,7 +54,7 @@ pub struct ApiService {
     client: Client,
     story_cache: Cache<u32, Story>,
     comment_cache: Cache<u32, Comment>,
-    article_cache: Cache<String, String>,
+    article_cache: Cache<String, Article>,
     #[cfg(test)]
     base_url: Option<String>,
 }
@@ -151,10 +151,10 @@ impl ApiService {
         Ok(comment)
     }
 
-    pub fn fetch_article_content(&self, url: &str) -> Result<String> {
+    pub fn fetch_article_content(&self, url: &str) -> Result<Article> {
         // Check cache first
-        if let Some(content) = self.article_cache.get(&url.to_string()) {
-            return Ok(content);
+        if let Some(article) = self.article_cache.get(&url.to_string()) {
+            return Ok(article);
         }
 
         // Fetch from web
@@ -165,12 +165,17 @@ impl ApiService {
             .send()
             .context("Failed to fetch article")?;
 
-        let bytes = response.bytes().context("Failed to get response bytes")?;
-        let text = from_read(&bytes[..], 80).context("Failed to convert HTML to text")?;
+        let html = response.text().context("Failed to get response text")?;
+        let elements = parse_article_html(&html);
+
+        // Simple title extraction heuristic (could be improved)
+        let title = "Article".to_string();
+
+        let article = Article { title, elements };
 
         // Cache the result
-        self.article_cache.set(url.to_string(), text.clone());
-        Ok(text)
+        self.article_cache.set(url.to_string(), article.clone());
+        Ok(article)
     }
 }
 

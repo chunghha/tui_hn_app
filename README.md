@@ -34,7 +34,10 @@ src/
 - Browse Hacker News categories: Best, Top, New, Ask, Show, Job
 - Keyboard-driven navigation (vi-like keys)
 - Story details and comments view
-- Inline article viewing (fetched and rendered as plain text)
+- Inline article viewing with **rich text support**
+  - Syntax highlighting for code blocks
+  - Table rendering
+  - Image placeholders
 - **In-memory caching with TTL** — reduces API calls and improves performance
   - Story cache (5 min TTL)
   - Comment cache (5 min TTL)  

@@ -7,10 +7,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 
-use crate::api::ApiService;
-use crate::api::StoryListType;
+use crate::api::{ApiService, StoryListType};
 use crate::config::AppConfig;
-use crate::internal::models::{Comment, Story};
+use crate::internal::models::{Article, Comment, Story};
 use crate::utils::theme_loader::{TuiTheme, load_theme};
 
 use ratatui::Frame;
@@ -52,7 +51,7 @@ pub enum Action {
     ToggleArticleView,
     #[allow(dead_code)]
     ToggleHelp,
-    ArticleLoaded(StoryListType, u32, String),
+    ArticleLoaded(StoryListType, u32, Article),
     ScrollArticleUp,
     ScrollArticleDown,
     SwitchTheme,
@@ -80,7 +79,7 @@ pub struct App {
     pub comments_loading: bool,
     /// Scroll offset for comments view (line-by-line scrolling)
     pub comments_scroll: usize,
-    pub article_content: Option<String>,
+    pub article_content: Option<Article>,
     pub article_for_story_id: Option<u32>,
     pub article_loading: bool,
     pub article_scroll: usize,

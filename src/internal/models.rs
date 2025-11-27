@@ -34,3 +34,20 @@ pub struct Comment {
     #[serde(default)]
     pub deleted: bool,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArticleElement {
+    Paragraph(String),
+    Heading(usize, String), // level, text
+    CodeBlock { lang: Option<String>, code: String },
+    List(Vec<String>),
+    Table(Vec<Vec<String>>), // rows -> cols
+    Image(String),           // alt text or src
+    Quote(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Article {
+    pub title: String,
+    pub elements: Vec<ArticleElement>,
+}

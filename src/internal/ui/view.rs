@@ -330,15 +330,117 @@ fn render_article(app: &App, f: &mut Frame, area: Rect) {
             .wrap(Wrap { trim: true });
         f.render_widget(meta_p, chunks[0]);
 
-        let content = if app.article_loading {
-            "Loading article...".to_string()
+        let content_lines = if app.article_loading {
+            vec![Line::from("Loading article...")]
+        } else if let Some(article) = &app.article_content {
+            let mut lines = Vec::new();
+            if !article.title.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    &article.title,
+                    Style::default()
+                        .fg(app.theme.foreground)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                )));
+                lines.push(Line::from(""));
+            }
+
+            for element in &article.elements {
+                match element {
+                    crate::internal::models::ArticleElement::Paragraph(text) => {
+                        lines.push(Line::from(Span::styled(
+                            text,
+                            Style::default().fg(app.theme.foreground),
+                        )));
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::Heading(level, text) => {
+                        let style = match level {
+                            1 => Style::default()
+                                .fg(app.theme.foreground)
+                                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                            2 => Style::default()
+                                .fg(app.theme.foreground)
+                                .add_modifier(Modifier::BOLD),
+                            _ => Style::default()
+                                .fg(app.theme.foreground)
+                                .add_modifier(Modifier::ITALIC),
+                        };
+                        lines.push(Line::from(Span::styled(text, style)));
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::CodeBlock { lang, code } => {
+                        let lang_info = lang.as_deref().unwrap_or("text");
+                        lines.push(Line::from(Span::styled(
+                            format!("```{}", lang_info),
+                            Style::default().fg(app.theme.comment_time),
+                        )));
+                        for line in code.lines() {
+                            lines.push(Line::from(Span::styled(
+                                line,
+                                Style::default().fg(app.theme.comment_author), // Use a different color for code
+                            )));
+                        }
+                        lines.push(Line::from(Span::styled(
+                            "```",
+                            Style::default().fg(app.theme.comment_time),
+                        )));
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::List(items) => {
+                        for item in items {
+                            lines.push(Line::from(vec![
+                                Span::styled(" • ", Style::default().fg(app.theme.border)),
+                                Span::styled(item, Style::default().fg(app.theme.foreground)),
+                            ]));
+                        }
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::Table(rows) => {
+                        lines.push(Line::from(Span::styled(
+                            "[Table]",
+                            Style::default()
+                                .fg(app.theme.comment_time)
+                                .add_modifier(Modifier::ITALIC),
+                        )));
+                        // Simple ASCII rendering for now
+                        for row in rows {
+                            let row_text = row.join(" | ");
+                            lines.push(Line::from(Span::styled(
+                                format!("| {} |", row_text),
+                                Style::default().fg(app.theme.foreground),
+                            )));
+                        }
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::Image(alt) => {
+                        lines.push(Line::from(Span::styled(
+                            format!("[IMAGE: {}]", alt),
+                            Style::default()
+                                .fg(app.theme.comment_time)
+                                .add_modifier(Modifier::ITALIC),
+                        )));
+                        lines.push(Line::from(""));
+                    }
+                    crate::internal::models::ArticleElement::Quote(text) => {
+                        lines.push(Line::from(vec![
+                            Span::styled("│ ", Style::default().fg(app.theme.border)),
+                            Span::styled(
+                                text,
+                                Style::default()
+                                    .fg(app.theme.foreground)
+                                    .add_modifier(Modifier::ITALIC),
+                            ),
+                        ]));
+                        lines.push(Line::from(""));
+                    }
+                }
+            }
+            lines
         } else {
-            app.article_content
-                .clone()
-                .unwrap_or_else(|| "No content available or failed to load.".to_string())
+            vec![Line::from("No content available or failed to load.")]
         };
 
-        let p = Paragraph::new(content)
+        let p = Paragraph::new(content_lines)
             .style(
                 Style::default()
                     .fg(app.theme.foreground)
@@ -356,16 +458,19 @@ fn render_article(app: &App, f: &mut Frame, area: Rect) {
             .scroll((app.article_scroll as u16, 0));
         f.render_widget(p, chunks[1]);
     } else {
-        // Fallback: no selected story, render the article content as before
-        let content = if app.article_loading {
-            "Loading article...".to_string()
+        // Fallback: no selected story, render empty or loading
+        let content_lines = if app.article_loading {
+            vec![Line::from("Loading article...")]
+        } else if let Some(_article) = &app.article_content {
+            // Reuse rendering logic? Or just simple text for now to fix compilation.
+            // Since we are in fallback mode (no selected story), we might just show the article if it exists (unlikely)
+            // or just a placeholder.
+            vec![Line::from("Select a story to view article.")]
         } else {
-            app.article_content
-                .clone()
-                .unwrap_or_else(|| "No content available or failed to load.".to_string())
+            vec![Line::from("Select a story to view article.")]
         };
 
-        let p = Paragraph::new(content)
+        let p = Paragraph::new(content_lines)
             .style(
                 Style::default()
                     .fg(app.theme.foreground)

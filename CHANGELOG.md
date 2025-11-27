@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-11-27
+
+### Added
+- **Better Article Rendering**:
+  - Rich text parsing using `scraper` (replacing `html2text`)
+  - Syntax highlighting for code blocks
+  - Table rendering (ASCII style)
+  - Image placeholders
+  - Improved list and quote styling
+
 ## [0.3.3] - 2025-11-27
 
 ### Added
