@@ -56,18 +56,31 @@ Note: These screenshots were taken with version `v0.1.0`. Subsequent UI enhancem
 The app reads configuration from `config.ron` (searched in the working directory and next to the executable). A `config.example.ron` is provided — copy it to `config.ron` and edit as needed.
 
 Important config keys:
-- `font_sans`, `font_serif`, `font_mono` — used conceptually; terminal fonts are controlled by your terminal emulator.
-- `theme_name` — preferred theme name (e.g., `"Flexoki Light"` / `"Flexoki Dark"`).
+- `theme_name` — preferred theme name.
 - `theme_file` — path to themes directory or specific theme JSON.
-- `webview_zoom` — initial article-view width handling (conceptual for layout).
-- `soft_wrap_max_run` — pre-processing for markdown/soft-wrap behavior.
+- `auto_switch_dark_to_light` — automatic theme switching based on terminal.
+- `ghost_term_name` — terminal name override for theme switching.
 
 Example (abbreviated):
 ```text
-# copy config.example.ron -> config.ron and edit
-theme_name: "Flexoki Light"
-theme_file: "./themes"
-webview_zoom: 120
+(
+    // Minimal configuration — only keys consumed by the application code.
+    // Preferred theme name to apply (must match a theme defined in your theme files)
+    // Examples: "Flexoki Light", "Flexoki Dark", "Solarized Dark"
+    theme_name: "Gruvbox Dark",
+
+    // Optional: path to a theme file or themes directory (defaults to "./themes")
+    theme_file: "./themes",
+
+    // When true, automatically switch a configured Dark theme to its Light variant
+    // on terminals other than the configured ghost_term_name. Set to false to disable this behavior.
+    auto_switch_dark_to_light: true,
+
+    // The TERM value that should be treated as the special "ghost" terminal
+    // where explicit Dark/Light variants in `theme_name` are honored verbatim.
+    // Defaults to "xterm-ghostty".
+    ghost_term_name: "xterm-ghostty",
+)
 ```
 
 ## Usage
