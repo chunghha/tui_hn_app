@@ -17,6 +17,16 @@ pub struct AppConfig {
     /// Defaults to "./themes" so ThemeRegistry can watch that directory.
     #[serde(default = "default_theme_file")]
     pub theme_file: String,
+    /// If true, automatically switch a configured dark theme to its light variant
+    /// when the runtime environment indicates a special terminal (e.g. TERM=xterm-ghostty)
+    /// or when automatic switching is desired. Defaults to true.
+    #[serde(default = "default_auto_switch_dark_to_light")]
+    pub auto_switch_dark_to_light: bool,
+    /// The TERM value that should be recognized as the special \"ghost\" terminal
+    /// where explicit Dark/Light variants in `theme_name` must be honored instead
+    /// of being auto-switched. Defaults to \"xterm-ghostty\".
+    #[serde(default = "default_ghost_term_name")]
+    pub ghost_term_name: String,
     /// WebView zoom level as percentage (e.g., 120 for 120%)
     #[serde(default = "default_webview_zoom")]
     pub webview_zoom: u32,
@@ -80,6 +90,14 @@ fn default_theme_file() -> String {
     "./themes".to_string()
 }
 
+fn default_auto_switch_dark_to_light() -> bool {
+    true
+}
+
+fn default_ghost_term_name() -> String {
+    "xterm-ghostty".to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -88,6 +106,8 @@ impl Default for AppConfig {
             font_mono: "IBM Plex Mono".to_string(),
             theme_name: default_theme_name(),
             theme_file: default_theme_file(),
+            auto_switch_dark_to_light: default_auto_switch_dark_to_light(),
+            ghost_term_name: default_ghost_term_name(),
             webview_zoom: 120,
             webview_theme_injection: default_webview_theme_injection(),
             webview_theme_mode: default_webview_theme_mode(),
@@ -191,6 +211,14 @@ impl AppConfig {
         replace_str(&mut new_content, "font_mono", &self.font_mono);
         replace_str(&mut new_content, "theme_name", &self.theme_name);
         replace_str(&mut new_content, "theme_file", &self.theme_file);
+        // Ensure boolean and ghost-term keys are updated when saving config so a
+        // minimal config file containing these keys will be preserved/updated.
+        replace_val(
+            &mut new_content,
+            "auto_switch_dark_to_light",
+            self.auto_switch_dark_to_light.to_string(),
+        );
+        replace_str(&mut new_content, "ghost_term_name", &self.ghost_term_name);
         replace_val(
             &mut new_content,
             "webview_zoom",

@@ -6,4 +6,13 @@
 
     // Optional: path to a theme file or themes directory (defaults to "./themes")
     theme_file: "./themes",
+
+    // When true, automatically switch a configured Dark theme to its Light variant
+    // on terminals other than the configured ghost_term_name. Set to false to disable this behavior.
+    auto_switch_dark_to_light: true,
+
+    // The TERM value that should be treated as the special "ghost" terminal
+    // where explicit Dark/Light variants in `theme_name` are honored verbatim.
+    // Defaults to "xterm-ghostty".
+    ghost_term_name: "xterm-ghostty",
 )

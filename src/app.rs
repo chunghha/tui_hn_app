@@ -125,131 +125,12 @@ impl App {
             tracing::info!("  [{}] {} ({}) -> {}", i, stem, mode, path);
         }
 
-        // Find theme from config or use first available.
-        // Respect an explicit \"Dark\" / \"Light\" token in the configured theme name
-        // (e.g. \"Gruvbox Dark\") — when present prefer that exact variant. If the
-        // token is absent, fall back to the detected runtime `terminal_mode`.
-        let (theme, current_theme_index) = if !available_themes.is_empty() {
-            // Canonicalize configured theme name and detect optional explicit mode token.
-            let theme_name_raw = config.theme_name.trim();
-            let mut requested_mode: Option<String> = None;
-            let mut base_name = theme_name_raw.to_string();
-
-            // If the last whitespace token is `dark` or `light` (case-insensitive),
-            // treat it as an explicit request and strip it from the base name.
-            if let Some(last) = theme_name_raw.split_whitespace().last()
-                && (last.eq_ignore_ascii_case("dark") || last.eq_ignore_ascii_case("light"))
-            {
-                requested_mode = Some(last.to_lowercase());
-                // Remove the trailing token to create the base name.
-                let tokens: Vec<&str> = theme_name_raw.split_whitespace().collect();
-                if tokens.len() >= 2 {
-                    base_name = tokens[..tokens.len() - 1].join(" ");
-                } else {
-                    base_name = String::new();
-                }
-            }
-
-            let base_lower = base_name.to_lowercase();
-            let fullname_lower = theme_name_raw.to_lowercase();
-
-            // Try to find the best matching theme file:
-            // 1) If base name is present, prefer an exact file_stem match (and mode if requested).
-            // 2) Otherwise, try a starts-with match against the full configured name.
-            // 3) Prefer candidates that match requested_mode if present, else prefer runtime terminal_mode.
-            let mut matched_idx: Option<usize> = None;
-
-            if !base_lower.is_empty() {
-                // Exact file_stem match first
-                for (i, (path, mode)) in available_themes.iter().enumerate() {
-                    if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
-                        && stem.eq_ignore_ascii_case(&base_lower)
-                    {
-                        if let Some(req) = &requested_mode {
-                            if mode.eq_ignore_ascii_case(req) {
-                                matched_idx = Some(i);
-                                break;
-                            }
-                        } else if mode == &terminal_mode {
-                            matched_idx = Some(i);
-                            break;
-                        } else if matched_idx.is_none() {
-                            matched_idx = Some(i);
-                        }
-                    }
-                }
-            }
-
-            if matched_idx.is_none() {
-                // Try starts-with against the configured full name (preserves older behavior)
-                for (i, (path, mode)) in available_themes.iter().enumerate() {
-                    if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
-                        && fullname_lower.starts_with(&stem.to_lowercase())
-                    {
-                        if let Some(req) = &requested_mode {
-                            if mode.eq_ignore_ascii_case(req) {
-                                matched_idx = Some(i);
-                                break;
-                            }
-                        } else if mode == &terminal_mode {
-                            matched_idx = Some(i);
-                            break;
-                        } else if matched_idx.is_none() {
-                            matched_idx = Some(i);
-                        }
-                    }
-                }
-            }
-
-            if let Some(idx) = matched_idx {
-                let (filename, mode) = &available_themes[idx];
-                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                (theme, idx)
-            } else {
-                // If a specific mode was requested but we didn't find an exact base match,
-                // try to select any theme with the requested mode.
-                if let Some(req) = requested_mode {
-                    if let Some(idx) = available_themes
-                        .iter()
-                        .position(|(_, mode)| mode.eq_ignore_ascii_case(&req))
-                    {
-                        let (filename, mode) = &available_themes[idx];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, idx)
-                    } else if let Some(idx) = available_themes
-                        .iter()
-                        .position(|(_, mode)| mode == &terminal_mode)
-                    {
-                        // Fallback to a theme matching runtime mode
-                        let (filename, mode) = &available_themes[idx];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, idx)
-                    } else {
-                        // Last resort: first available
-                        let (filename, mode) = &available_themes[0];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, 0)
-                    }
-                } else {
-                    // No explicit mode requested: prefer a theme whose mode matches the runtime
-                    if let Some(idx) = available_themes
-                        .iter()
-                        .position(|(_, mode)| mode == &terminal_mode)
-                    {
-                        let (filename, mode) = &available_themes[idx];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, idx)
-                    } else {
-                        // Fallback to first available
-                        let (filename, mode) = &available_themes[0];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, 0)
-                    }
-                }
-            }
-        } else {
-            (TuiTheme::default(), 0)
-        };
+        // Select theme using helper that centralizes selection logic and honors config flags.
+        // Pass the TERM environment value explicitly so selection logic does not call env::var
+        // itself (makes testing and behavior explicit).
+        let term_env = std::env::var("TERM").unwrap_or_default();
+        let (theme, current_theme_index) =
+            Self::select_theme_from_config(&config, &available_themes, &terminal_mode, &term_env);
 
         // Log which theme was finally selected (index and variant) so startup behavior is traceable.
         if !available_themes.is_empty() {
@@ -395,6 +276,139 @@ impl App {
         themes
     }
 
+    /// Centralized theme selection logic extracted from `new`.
+    /// Returns (TuiTheme, selected_index) for the given config and discovered themes.
+    fn select_theme_from_config(
+        config: &crate::config::AppConfig,
+        available_themes: &[(String, String)],
+        terminal_mode: &str,
+        term_env: &str,
+    ) -> (TuiTheme, usize) {
+        if available_themes.is_empty() {
+            return (TuiTheme::default(), 0);
+        }
+
+        // Canonicalize configured theme name and detect optional explicit mode token.
+        let theme_name_raw = config.theme_name.trim();
+        let mut requested_mode: Option<String> = None;
+        let mut base_name = theme_name_raw.to_string();
+
+        if let Some(last) = theme_name_raw.split_whitespace().last()
+            && (last.eq_ignore_ascii_case("dark") || last.eq_ignore_ascii_case("light"))
+        {
+            requested_mode = Some(last.to_lowercase());
+            let tokens: Vec<&str> = theme_name_raw.split_whitespace().collect();
+            if tokens.len() >= 2 {
+                base_name = tokens[..tokens.len() - 1].join(" ");
+            } else {
+                base_name = String::new();
+            }
+
+            // Respect ghost terminal name from config; use the provided `term_env` value
+            // passed in by the caller rather than reading the environment here.
+            let ghost_name = config.ghost_term_name.trim();
+            if term_env.eq_ignore_ascii_case(ghost_name) {
+                tracing::info!(
+                    "TERM='{}' detected; honoring requested theme variant '{}'",
+                    term_env,
+                    requested_mode.as_deref().unwrap_or("unknown")
+                );
+            } else if requested_mode.as_deref() == Some("dark") && config.auto_switch_dark_to_light
+            {
+                tracing::info!(
+                    "Auto-switching requested dark variant to light because TERM!='{}' and auto_switch_dark_to_light is enabled",
+                    ghost_name
+                );
+                requested_mode = Some("light".to_string());
+            } else {
+                tracing::info!("Requested theme variant retained: {:?}", requested_mode);
+            }
+        }
+
+        let base_lower = base_name.to_lowercase();
+        let fullname_lower = theme_name_raw.to_lowercase();
+
+        // Find best candidate index using same strategy as before
+        let mut matched_idx: Option<usize> = None;
+
+        if !base_lower.is_empty() {
+            for (i, (path, mode)) in available_themes.iter().enumerate() {
+                if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
+                    && stem.eq_ignore_ascii_case(&base_lower)
+                {
+                    if let Some(req) = &requested_mode {
+                        if mode.eq_ignore_ascii_case(req) {
+                            matched_idx = Some(i);
+                            break;
+                        }
+                    } else if mode == terminal_mode {
+                        matched_idx = Some(i);
+                        break;
+                    } else if matched_idx.is_none() {
+                        matched_idx = Some(i);
+                    }
+                }
+            }
+        }
+
+        if matched_idx.is_none() {
+            for (i, (path, mode)) in available_themes.iter().enumerate() {
+                if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
+                    && fullname_lower.starts_with(&stem.to_lowercase())
+                {
+                    if let Some(req) = &requested_mode {
+                        if mode.eq_ignore_ascii_case(req) {
+                            matched_idx = Some(i);
+                            break;
+                        }
+                    } else if mode == terminal_mode {
+                        matched_idx = Some(i);
+                        break;
+                    } else if matched_idx.is_none() {
+                        matched_idx = Some(i);
+                    }
+                }
+            }
+        }
+
+        if let Some(idx) = matched_idx {
+            let (filename, mode) = &available_themes[idx];
+            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+            (theme, idx)
+        } else if let Some(req) = requested_mode {
+            if let Some(idx) = available_themes
+                .iter()
+                .position(|(_, mode)| mode.eq_ignore_ascii_case(&req))
+            {
+                let (filename, mode) = &available_themes[idx];
+                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                (theme, idx)
+            } else if let Some(idx) = available_themes
+                .iter()
+                .position(|(_, mode)| mode == terminal_mode)
+            {
+                let (filename, mode) = &available_themes[idx];
+                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                (theme, idx)
+            } else {
+                let (filename, mode) = &available_themes[0];
+                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                (theme, 0)
+            }
+        } else if let Some(idx) = available_themes
+            .iter()
+            .position(|(_, mode)| mode == terminal_mode)
+        {
+            let (filename, mode) = &available_themes[idx];
+            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+            (theme, idx)
+        } else {
+            let (filename, mode) = &available_themes[0];
+            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+            (theme, 0)
+        }
+    }
+
     pub async fn run(&mut self, mut tui: crate::tui::Tui) -> Result<()> {
         // Initial load
         let _ = self
@@ -512,6 +526,42 @@ impl App {
             }
             KeyCode::Char('t') => {
                 let _ = self.action_tx.send(Action::SwitchTheme);
+            }
+            // Toggle auto_switch_dark_to_light at runtime and persist to config.ron.
+            // Pressing 'g' flips the flag, saves config, and shows a short notification.
+            KeyCode::Char('g') => {
+                // Flip the flag and persist the configuration.
+                self.config.auto_switch_dark_to_light = !self.config.auto_switch_dark_to_light;
+                // Attempt to save the config to disk; AppConfig::save preserves comments.
+                self.config.save();
+
+                let status = if self.config.auto_switch_dark_to_light {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+
+                // Notify user briefly
+                self.notification_message = Some(format!("Auto-switch Dark->Light {}", status));
+                self.notification_timer = Some(tokio::time::Instant::now());
+
+                // Re-evaluate theme selection using the centralized helper and apply it immediately.
+                let term_env = std::env::var("TERM").unwrap_or_default();
+                let (new_theme, new_idx) = Self::select_theme_from_config(
+                    &self.config,
+                    &self.available_themes,
+                    &self.terminal_mode,
+                    &term_env,
+                );
+                self.theme = new_theme;
+                self.current_theme_index = new_idx;
+
+                // Schedule a clear of the notification after a few seconds
+                let tx = self.action_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    let _ = tx.send(Action::ClearNotification);
+                });
             }
             KeyCode::Char('m') => {
                 if self.view_mode == ViewMode::List {
@@ -876,9 +926,60 @@ impl App {
                 self.article_scroll += 1;
             }
             Action::SwitchTheme => {
-                if !self.available_themes.is_empty() {
-                    self.current_theme_index =
-                        (self.current_theme_index + 1) % self.available_themes.len();
+                if self.available_themes.is_empty() {
+                    return;
+                }
+
+                // Determine the currently-active variant mode (e.g., "dark" or "light")
+                let current_mode = self
+                    .available_themes
+                    .get(self.current_theme_index)
+                    .map(|(_, m)| m.to_lowercase())
+                    .unwrap_or_else(|| self.terminal_mode.clone());
+
+                // Collect indices of all discovered themes that have the same mode.
+                let group: Vec<usize> = self
+                    .available_themes
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, (_p, mode))| {
+                        if mode.eq_ignore_ascii_case(&current_mode) {
+                            Some(i)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if group.len() > 1 {
+                    // Cycle within the same-mode group (e.g., all dark themes)
+                    let pos = group
+                        .iter()
+                        .position(|&idx| idx == self.current_theme_index)
+                        .unwrap_or(0);
+                    let next_pos = (pos + 1) % group.len();
+                    let new_idx = group[next_pos];
+                    self.current_theme_index = new_idx;
+                    let (filename, mode) = &self.available_themes[new_idx];
+                    if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
+                        self.theme = new_theme;
+                    }
+                } else {
+                    // Fallback: try to find the next global entry that matches the current mode,
+                    // otherwise just advance by one.
+                    let total = self.available_themes.len();
+                    let mut chosen = (self.current_theme_index + 1) % total;
+                    if let Some(idx) = (0..total)
+                        .map(|n| (self.current_theme_index + 1 + n) % total)
+                        .find(|&i| {
+                            self.available_themes[i]
+                                .1
+                                .eq_ignore_ascii_case(&current_mode)
+                        })
+                    {
+                        chosen = idx;
+                    }
+                    self.current_theme_index = chosen;
                     let (filename, mode) = &self.available_themes[self.current_theme_index];
                     if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
                         self.theme = new_theme;
@@ -1300,8 +1401,13 @@ impl App {
             String::new()
         };
 
-        // Show only the theme in the top-right corner
-        let top_bar_text = theme_name;
+        // Show theme and auto-switch status in the top-right corner
+        let auto_status = if self.config.auto_switch_dark_to_light {
+            "Auto:On"
+        } else {
+            "Auto:Off"
+        };
+        let top_bar_text = format!("{}  {}", theme_name, auto_status);
 
         let p = Paragraph::new(top_bar_text)
             .alignment(Alignment::Right)
@@ -1436,5 +1542,87 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    #[test]
+    fn select_exact_dark_when_ghost_term() {
+        // Configure AppConfig to request Gruvbox Dark and set ghost term name to match TERM.
+        let mut cfg = AppConfig::default();
+        cfg.theme_name = "Gruvbox Dark".to_string();
+        cfg.ghost_term_name = "xterm-ghostty".to_string();
+        cfg.auto_switch_dark_to_light = true;
+
+        // Provide available themes: gruvbox.json dark then light
+        let available = vec![
+            ("./themes/gruvbox.json".to_string(), "dark".to_string()),
+            ("./themes/gruvbox.json".to_string(), "light".to_string()),
+        ];
+
+        // Terminal mode argument (runtime detection) - pass explicit TERM value (ghost)
+        let term_env = "xterm-ghostty";
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "dark", term_env);
+
+        // Should select the dark variant (index 0)
+        assert_eq!(
+            idx, 0,
+            "Expected dark variant to be chosen when TERM matches ghost_term_name"
+        );
+    }
+
+    #[test]
+    fn auto_switch_dark_to_light_when_not_ghost() {
+        // Request Gruvbox Dark but TERM is not ghost; auto-switch enabled.
+        let mut cfg = AppConfig::default();
+        cfg.theme_name = "Gruvbox Dark".to_string();
+        cfg.ghost_term_name = "xterm-ghostty".to_string();
+        cfg.auto_switch_dark_to_light = true;
+
+        let available = vec![
+            ("./themes/gruvbox.json".to_string(), "dark".to_string()),
+            ("./themes/gruvbox.json".to_string(), "light".to_string()),
+        ];
+
+        // Pass a non-ghost TERM value explicitly
+        let term_env = "xterm-256color";
+
+        // Even if runtime terminal_mode string is "dark", the presence of TERM not matching ghost
+        // and auto_switch true should result in choosing the light variant.
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "dark", term_env);
+
+        // We expect the light variant to be chosen (index 1)
+        assert_eq!(
+            idx, 1,
+            "Expected light variant to be chosen when auto-switch is enabled and TERM != ghost_term_name"
+        );
+    }
+
+    #[test]
+    fn fallback_to_runtime_mode_when_no_requested_variant() {
+        // If config requests a base name without Dark/Light token, prefer runtime terminal_mode.
+        let mut cfg = AppConfig::default();
+        cfg.theme_name = "Gruvbox".to_string();
+        cfg.ghost_term_name = "xterm-ghostty".to_string();
+        cfg.auto_switch_dark_to_light = true;
+
+        let available = vec![
+            ("./themes/gruvbox.json".to_string(), "dark".to_string()),
+            ("./themes/gruvbox.json".to_string(), "light".to_string()),
+        ];
+
+        // Pass a non-ghost TERM value explicitly and runtime_mode 'light'
+        let term_env = "xterm-256color";
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "light", term_env);
+
+        // Expect index 1 (light) to be preferred when runtime terminal_mode == light
+        assert_eq!(
+            idx, 1,
+            "Expected runtime matching variant (light) when no explicit token in config"
+        );
     }
 }
