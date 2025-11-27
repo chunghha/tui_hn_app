@@ -87,6 +87,8 @@ pub struct App {
     pub terminal_mode: String,
     pub notification_message: Option<String>,
     pub notification_timer: Option<tokio::time::Instant>,
+    pub spinner_state: usize,
+    pub last_spinner_update: Option<tokio::time::Instant>,
     pub input_mode: InputMode,
     pub search_query: String,
     #[allow(dead_code)]
@@ -176,6 +178,8 @@ impl App {
             terminal_mode,
             notification_message: None,
             notification_timer: None,
+            spinner_state: 0,
+            last_spinner_update: None,
             input_mode: InputMode::Normal,
             search_query: String::new(),
             config,
@@ -419,6 +423,17 @@ impl App {
         let mut event_interval = tokio::time::interval(std::time::Duration::from_millis(16));
 
         loop {
+            // Update spinner animation every 100ms
+            let now = tokio::time::Instant::now();
+            if let Some(last_update) = self.last_spinner_update {
+                if now.duration_since(last_update).as_millis() >= 100 {
+                    self.spinner_state = self.spinner_state.wrapping_add(1);
+                    self.last_spinner_update = Some(now);
+                }
+            } else {
+                self.last_spinner_update = Some(now);
+            }
+
             tui.draw(|f| self.ui(f))?;
 
             tokio::select! {
@@ -770,7 +785,7 @@ impl App {
                 });
             }
             Action::LoadAllStories => {
-                if self.loading || self.story_ids.is_empty() {
+                if self.loading || self.story_ids.is_empty() || self.story_load_progress.is_some() {
                     return;
                 }
 
@@ -1115,6 +1130,35 @@ impl App {
         self.story_list_state.select(Some(i));
     }
 
+    pub fn get_spinner_char(&self) -> &'static str {
+        const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        SPINNER_FRAMES[self.spinner_state % SPINNER_FRAMES.len()]
+    }
+
+    #[allow(dead_code)] // Reserved for future network status feature
+    pub fn active_loading_count(&self) -> usize {
+        let mut count = 0;
+        if self.loading {
+            count += 1;
+        }
+        if self.comments_loading {
+            count += 1;
+        }
+        if self.article_loading {
+            count += 1;
+        }
+        count
+    }
+
+    pub fn loading_description(&self) -> Option<String> {
+        match (self.article_loading, self.comments_loading, self.loading) {
+            (true, _, _) => Some("Loading article...".to_string()),
+            (_, true, _) => Some("Loading comments...".to_string()),
+            (_, _, true) => Some("Loading stories...".to_string()),
+            _ => None,
+        }
+    }
+
     pub fn ui(&mut self, f: &mut Frame) {
         super::view::draw(self, f);
     }
@@ -1204,17 +1248,20 @@ mod tests {
     #[test]
     fn test_comment_pagination_initialization() {
         let app = App::new();
-        
+
         // Verify initial state
         assert_eq!(app.comment_ids.len(), 0, "Should start with no comment IDs");
-        assert_eq!(app.loaded_comments_count, 0, "Should start with 0 loaded comments");
+        assert_eq!(
+            app.loaded_comments_count, 0,
+            "Should start with 0 loaded comments"
+        );
         assert_eq!(app.comments.len(), 0, "Should start with no comments");
     }
 
     #[test]
     fn test_comment_ids_stored_on_story_selection() {
         let mut app = App::new();
-        
+
         // Create a story with comment IDs
         let story = Story {
             id: 123,
@@ -1226,19 +1273,19 @@ mod tests {
             descendants: Some(50),
             kids: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
         };
-        
+
         // Before selection
         assert_eq!(app.comment_ids.len(), 0);
-        
+
         // The actual comment loading happens in handle_action, which is async
         // Here we just verify the state that would be set when handling SelectStory
         // We can't easily test the full async flow in a unit test without mocking
-        
+
         // For now, verify we can store comment IDs manually
         let kids = story.kids.clone().unwrap();
         app.comment_ids = kids.clone();
         app.loaded_comments_count = 0;
-        
+
         assert_eq!(app.comment_ids.len(), 12, "Should store all comment IDs");
         assert_eq!(app.loaded_comments_count, 0, "Should reset loaded count");
     }
@@ -1246,11 +1293,11 @@ mod tests {
     #[test]
     fn test_comments_loaded_increments_count() {
         let mut app = App::new();
-        
+
         // Set up pagination state
         app.comment_ids = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         app.loaded_comments_count = 0;
-        
+
         // Simulate loading first batch (would come from Action::CommentsLoaded)
         let first_batch = vec![
             Comment {
@@ -1270,30 +1317,31 @@ mod tests {
                 deleted: false,
             },
         ];
-        
+
         // Simulate what CommentsLoaded handler does
         app.loaded_comments_count += first_batch.len();
         app.comments.extend(first_batch);
-        
+
         assert_eq!(app.loaded_comments_count, 2, "Should track loaded count");
         assert_eq!(app.comments.len(), 2, "Should have 2 comments");
-        
+
         // Simulate loading second batch
-        let second_batch = vec![
-            Comment {
-                id: 3,
-                by: Some("user3".to_string()),
-                text: Some("Comment 3".to_string()),
-                time: Some(1234567892),
-                kids: None,
-                deleted: false,
-            },
-        ];
-        
+        let second_batch = vec![Comment {
+            id: 3,
+            by: Some("user3".to_string()),
+            text: Some("Comment 3".to_string()),
+            time: Some(1234567892),
+            kids: None,
+            deleted: false,
+        }];
+
         app.loaded_comments_count += second_batch.len();
         app.comments.extend(second_batch);
-        
-        assert_eq!(app.loaded_comments_count, 3, "Should increment loaded count");
+
+        assert_eq!(
+            app.loaded_comments_count, 3,
+            "Should increment loaded count"
+        );
         assert_eq!(app.comments.len(), 3, "Should append to comments");
     }
 
@@ -1304,10 +1352,10 @@ mod tests {
             loaded_comments_count: 5,
             ..App::new()
         };
-        
+
         // Simulate LoadMoreComments logic check
         let all_loaded = app.loaded_comments_count >= app.comment_ids.len();
-        
+
         assert!(all_loaded, "Should detect when all comments are loaded");
     }
 
@@ -1318,10 +1366,10 @@ mod tests {
             loaded_comments_count: 0,
             ..App::new()
         };
-        
+
         // Simulate LoadMoreComments logic check
         let should_skip = app.comment_ids.is_empty();
-        
+
         assert!(should_skip, "Should handle story with no comments");
     }
 
@@ -1332,10 +1380,13 @@ mod tests {
             loaded_comments_count: 5,
             ..App::new()
         };
-        
+
         let remaining = app.comment_ids.len() - app.loaded_comments_count;
-        
-        assert_eq!(remaining, 5, "Should calculate remaining comments correctly");
+
+        assert_eq!(
+            remaining, 5,
+            "Should calculate remaining comments correctly"
+        );
         assert!(
             app.loaded_comments_count < app.comment_ids.len(),
             "Should detect more comments available"

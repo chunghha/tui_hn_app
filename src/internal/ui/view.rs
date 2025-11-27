@@ -49,42 +49,55 @@ fn render_progress_overlay(app: &App, f: &mut Frame) {
     if let Some((loaded, total)) = app.story_load_progress {
         let area = f.area();
         let popup_width = 60.min(area.width - 4);
-        let popup_height = 5;
+        let popup_height = 5; // Reduced height
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
         let popup_y = (area.height.saturating_sub(popup_height)) / 2;
         let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-        let block = Block::default()
-            .title("Loading all stories")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.border));
-
-        let clear_area = block.inner(popup_area);
-        f.render_widget(Clear, clear_area);
-        f.render_widget(block, popup_area);
-
-        let gauge_area = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0)])
-            .margin(1)
-            .split(popup_area)[0];
-
+        // Add spinner to title
+        let spinner = app.get_spinner_char();
         let percent = if total > 0 {
             (loaded as f64 / total as f64 * 100.0) as u16
         } else {
             0
         };
 
+        let block = Block::default()
+            .title(format!("{} Loading all stories", spinner))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.border))
+            .style(Style::default().bg(app.theme.background));
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(&block, popup_area);
+
+        let inner_area = block.inner(popup_area);
+
+        // Split into sections for gauge and percentage
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Gauge
+                Constraint::Length(1), // Percentage
+            ])
+            .split(inner_area);
+
+        // Gauge with label
         let gauge = ratatui::widgets::Gauge::default()
-            .block(Block::default().title(format!("{}/{}", loaded, total)))
             .gauge_style(
                 Style::default()
                     .fg(app.theme.selection_bg)
                     .bg(app.theme.background),
             )
+            .label(format!("{}/{}", loaded, total))
             .percent(percent);
+        f.render_widget(gauge, chunks[0]);
 
-        f.render_widget(gauge, gauge_area);
+        // Percentage text
+        let percent_text = Paragraph::new(format!("{}%", percent))
+            .style(Style::default().fg(app.theme.comment_time))
+            .alignment(Alignment::Center);
+        f.render_widget(percent_text, chunks[1]);
     }
 }
 
@@ -389,7 +402,24 @@ fn render_top_bar(app: &App, f: &mut Frame, area: Rect) {
 
 fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
     let status = if app.loading || app.comments_loading || app.article_loading {
-        "Loading...".to_string()
+        // Show animated spinner with loading description
+        let spinner = app.get_spinner_char();
+        let desc = app
+            .loading_description()
+            .unwrap_or_else(|| "Loading...".to_string());
+
+        // If we have story count info, append it
+        if !app.story_ids.is_empty() && app.view_mode == ViewMode::List {
+            format!(
+                "{} {} | {}/{}",
+                spinner,
+                desc,
+                app.loaded_count,
+                app.story_ids.len()
+            )
+        } else {
+            format!("{} {}", spinner, desc)
+        }
     } else if app.input_mode == InputMode::Search {
         // Simplified status bar for search mode
         "Search: Type to filter | Enter/Esc: Finish | Ctrl+C: Clear".to_string()

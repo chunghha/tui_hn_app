@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.3.1] - 2025-11-27
+
+### Added
+- **Animated Loading Spinner**: Smooth 10 FPS spinner animation using Unicode characters (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+  - Updates every 100ms in main event loop
+  - Context-aware loading messages in status bar
+  - Shows "⠋ Loading article/comments/stories..." based on active operation
+
+### Changed
+- **Enhanced Progress Overlay**: Improved "Load All Stories" progress display
+  - Increased popup height for better visibility
+  - Added animated spinner to title
+  - Shows percentage as separate text (e.g., "9%")
+  - Better layout with progress text, gauge, and percentage
+- **Status Bar**: Replaced static "Loading..." with animated spinner and description
+- **Code Quality**: Refactored `loading_description` to use pattern matching (more idiomatic Rust)
+
+### Technical
+- Added `spinner_state` and `last_spinner_update` to App state
+- Added helper methods: `get_spinner_char()`, `active_loading_count()`, `loading_description()`
+
 ## [0.3.0] - 2025-11-27
 
 ### Added

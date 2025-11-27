@@ -1,6 +1,6 @@
 # TUI Hacker News App - Development Roadmap
 
-> **Current Version**: 0.3.0 (in development)  
+> **Current Version**: 0.3.2 (in development)  
 > See [Version Planning](#version-planning) section below for the full roadmap.
 
 ## ✅ Completed Items
@@ -30,12 +30,13 @@
   - Persistent cache to disk (optional)
   - Cache invalidation strategy
 
-- [ ] **Progress Indicators**: Improve loading feedback
+- [x] **Progress Indicators**: Improve loading feedback
+  - ✅ Implemented in v0.3.1
   - Better progress bar for "Load All Stories"
   - Loading spinner for individual story/comment fetches
   - Network status indicator in status bar
 
-- [ ] **Keyboard Shortcuts Help**: Add `?` key to show all available shortcuts
+- [ ] **Keyboard Shortcuts Help**: Add `?` key to show all available shortcuts - (v0.3.2 in progress)
   - Overlay or dedicated view
   - Context-sensitive help (different shortcuts per view mode)
 
