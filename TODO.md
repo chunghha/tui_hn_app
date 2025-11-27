@@ -36,7 +36,8 @@
   - Loading spinner for individual story/comment fetches
   - Network status indicator in status bar
 
-- [ ] **Keyboard Shortcuts Help**: Add `?` key to show all available shortcuts - (v0.3.2 in progress)
+- [x] **Keyboard Shortcuts Help**: Add `?` key to show all available shortcuts
+  - ✅ Implemented in v0.3.2
   - Overlay or dedicated view
   - Context-sensitive help (different shortcuts per view mode)
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-11-27
+
+### Added
+- **Keyboard Shortcuts Help**: Press `?` to show a help overlay with all available shortcuts
+  - Categorized list (Global, Navigation, Story List, Article/Comments)
+  - Context-aware closing (Esc/q/?)
+
 ## [0.3.1] - 2025-11-27
 
 ### Added

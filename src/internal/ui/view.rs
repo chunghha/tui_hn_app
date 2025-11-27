@@ -43,6 +43,11 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     if app.story_load_progress.is_some() {
         render_progress_overlay(app, f);
     }
+
+    // Render help overlay if active
+    if app.show_help {
+        render_help_overlay(app, f);
+    }
 }
 
 fn render_progress_overlay(app: &App, f: &mut Frame) {
@@ -442,15 +447,17 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                     ""
                 };
                 format!(
-                    "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | t: Theme | q: Quit{}{}{}",
+                    "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | t: Theme | ?: Help | q: Quit{}{}{}",
                     loaded_info, filter_hint, clear_hint
                 )
             }
             ViewMode::StoryDetail => {
-                "Esc/q: Back | o: Browser | n: More Comments | Tab: Article | t: Theme".to_string()
+                "Esc/q: Back | o: Browser | n: More Comments | Tab: Article | t: Theme | ?: Help"
+                    .to_string()
             }
             ViewMode::Article => {
-                "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme".to_string()
+                "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme | ?: Help"
+                    .to_string()
             }
         }
     };
@@ -536,4 +543,138 @@ fn render_search_overlay(app: &App, f: &mut Frame) {
 
     f.render_widget(Clear, search_area);
     f.render_widget(search_box, search_area);
+}
+
+fn render_help_overlay(app: &App, f: &mut Frame) {
+    let area = f.area();
+
+    // Create centered popup
+    let popup_width = 80.min(area.width - 4);
+    let popup_height = 20.min(area.height - 4);
+
+    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+    let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+
+    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    // Clear background
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.theme.selection_bg))
+        .title(" Keyboard Shortcuts (Esc/q to close) ")
+        .title_style(
+            Style::default()
+                .fg(app.theme.selection_fg)
+                .bg(app.theme.selection_bg)
+                .add_modifier(Modifier::BOLD),
+        )
+        .padding(Padding::horizontal(2))
+        .style(Style::default().bg(app.theme.background));
+
+    let inner_area = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    // Shortcuts content
+    let shortcuts = vec![
+        Line::from(vec![Span::styled(
+            "Global",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("?", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Show this help"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("q / Esc", Style::default().fg(app.theme.comment_time)),
+            Span::raw("  Quit / Back / Close overlay"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("t", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Toggle theme (Light/Dark)"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("g", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Toggle auto-switch theme"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Navigation",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("j / k", Style::default().fg(app.theme.comment_time)),
+            Span::raw("    Move selection down / up"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Enter", Style::default().fg(app.theme.comment_time)),
+            Span::raw("    View story details"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Tab", Style::default().fg(app.theme.comment_time)),
+            Span::raw("      Toggle Article/Comments view"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Story List",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("1-6", Style::default().fg(app.theme.comment_time)),
+            Span::raw("      Switch categories (Top, New, Best...)"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("/", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Search stories"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("m", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Load more stories"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("A", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Load ALL stories"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Article / Comments",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("o", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Open in browser"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("n", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Load more comments"),
+        ]),
+    ];
+
+    let p = Paragraph::new(shortcuts)
+        .style(Style::default().fg(app.theme.foreground))
+        .wrap(Wrap { trim: false }); // Don't trim to preserve indentation
+
+    f.render_widget(p, inner_area);
 }
