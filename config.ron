@@ -1,0 +1,9 @@
+(
+    // Minimal configuration — only keys consumed by the application code.
+    // Preferred theme name to apply (must match a theme defined in your theme files)
+    // Examples: "Flexoki Light", "Flexoki Dark", "Solarized Dark"
+    theme_name: "Gruvbox Dark",
+
+    // Optional: path to a theme file or themes directory (defaults to "./themes")
+    theme_file: "./themes",
+)

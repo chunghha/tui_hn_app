@@ -1,0 +1,34 @@
+version: "3"
+env:
+  PGM_NAME: tui-hn-app
+tasks:
+  build:
+    deps: [fmt, clippy]
+    cmds:
+      - cargo build --release
+  clippy:
+    cmds:
+      - cargo clippy
+  fmt:
+    cmds:
+      - cargo fmt
+  test:
+    cmds:
+      - cargo test
+  loc:
+    cmds:
+      - tokei . --exclude vendor
+  run:
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME
+  run:debug:
+    deps: [build]
+    cmds:
+      - RUST_LOG=debug target/release/$PGM_NAME
+  typo:
+    cmds:
+      - typos src/**/*.rs
+  typo:fix:
+    cmds:
+      - typos -w src/**/*.rs

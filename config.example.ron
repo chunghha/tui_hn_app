@@ -1,0 +1,11 @@
+(
+    // Minimal example configuration — only keys used by the application code.
+    // Copy this to `config.ron` and edit the theme name as needed.
+
+    // Preferred theme name to apply (must match a theme defined in your theme files)
+    // Examples: "Flexoki Light", "Flexoki Dark"
+    theme_name: "Flexoki Light",
+
+    // Optional: path to a theme file or themes directory (defaults to "./themes")
+    theme_file: "./themes",
+)
