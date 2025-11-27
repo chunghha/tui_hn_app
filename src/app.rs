@@ -18,7 +18,9 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::Alignment;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap,
+};
 
 /// Application view modes.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -1199,6 +1201,7 @@ impl App {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1))
                     .border_style(Style::default().fg(self.theme.border))
                     .title(title)
                     .title_style(Style::default().fg(self.theme.foreground)),
@@ -1246,6 +1249,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
                         .border_style(Style::default().fg(self.theme.border))
                         .title("Story Details")
                         .title_style(Style::default().fg(self.theme.foreground)),
@@ -1288,6 +1292,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
                         .border_style(Style::default().fg(self.theme.border))
                         .title("Comments (Tab to view Article)")
                         .title_style(Style::default().fg(self.theme.foreground)),
@@ -1329,6 +1334,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
                         .border_style(Style::default().fg(self.theme.border))
                         .title("Story Details")
                         .title_style(Style::default().fg(self.theme.foreground)),
@@ -1353,6 +1359,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
                         .border_style(Style::default().fg(self.theme.border))
                         .title("Article View (Tab to view Comments)")
                         .title_style(Style::default().fg(self.theme.foreground)),
@@ -1379,6 +1386,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
                         .border_style(Style::default().fg(self.theme.border))
                         .title("Article View (Tab to view Comments)")
                         .title_style(Style::default().fg(self.theme.foreground)),
@@ -1411,11 +1419,12 @@ impl App {
 
         let p = Paragraph::new(top_bar_text)
             .alignment(Alignment::Right)
-            .style(
-                Style::default()
-                    .bg(self.theme.background)
-                    .fg(self.theme.foreground),
-            );
+            .block(
+                Block::default()
+                    .padding(Padding::horizontal(1))
+                    .style(Style::default().bg(self.theme.background)),
+            )
+            .style(Style::default().fg(self.theme.foreground));
         f.render_widget(p, area);
     }
 
@@ -1457,11 +1466,13 @@ impl App {
             }
         };
 
-        let p = Paragraph::new(status).style(
-            Style::default()
-                .bg(self.theme.selection_bg)
-                .fg(self.theme.selection_fg),
-        );
+        let p = Paragraph::new(status)
+            .block(
+                Block::default()
+                    .padding(Padding::horizontal(1))
+                    .style(Style::default().bg(self.theme.selection_bg)),
+            )
+            .style(Style::default().fg(self.theme.selection_fg));
         f.render_widget(p, area);
     }
 
