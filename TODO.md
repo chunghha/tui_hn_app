@@ -1,55 +1,152 @@
-# Port GPUI HN App to Ratatui
+# TUI Hacker News App - Development Roadmap
 
-## Goal Description
-Port the existing Hacker News application from `gpui` to `ratatui` to create a Terminal User Interface (TUI) version, while preserving the core application logic.
+> **Current Version**: 0.3.0 (in development)  
+> See [Version Planning](#version-planning) section below for the full roadmap.
 
-## User Review Required
-- [ ] Confirmation of key bindings scheme (vim-like vs arrow keys).
-- [ ] Visual design preference for TUI (borders, colors).
+## ✅ Completed Items
 
-## Proposed Changes
+### Core Features
+- [x] Port from GPUI to Ratatui
+- [x] Story Categories (Top, New, Best, Ask, Show, Job lists)
+- [x] In-App Article View (renders article content directly in TUI using html2text)
+- [x] Theming (custom themes loaded from JSON files)
+- [x] Search/Filter functionality
+- [x] Pagination (load more / load all)
+- [x] Auto theme switching based on terminal mode detection
+- [x] Runtime configuration toggle (auto_switch_dark_to_light)
+- [x] UI padding for better readability
+- [x] Code organization (separated state management from view rendering in `internal/ui/`)
 
-### Dependencies
-- Remove `gpui`, `gpui-component`.
-- Add `ratatui`, `crossterm`, `tokio` (if not present/compatible).
+## 🚧 Enhancements to Consider
 
-### Core Logic
-- **Refactor `AppState`**:
-    - Remove `gpui::Entity`, `gpui::App`, `gpui::Context` dependencies.
-    - Use `tokio` channels (`mpsc`) for async communication between API fetching tasks and the main UI thread.
-    - Store state in a struct that can be mutated by the main event loop.
-- **Async Runtime**:
-    - Switch to `tokio` runtime for the main function.
-    - Use `tokio::spawn` for background API requests.
+### Performance & User Experience
+- [x] **Comment Pagination**: Load comments incrementally in batches of 20
+  - ✅ Implemented in v0.3.0
+  - Added "Load More Comments" action (press `n`)
+  - Shows comment count vs loaded count
+  
+- [ ] **Caching Layer**: Cache fetched stories and articles to reduce API calls
+  - In-memory cache with TTL
+  - Persistent cache to disk (optional)
+  - Cache invalidation strategy
 
-### UI Layer
-- **TUI Framework**: Use `ratatui` for rendering.
-- **Event Handling**: Use `crossterm` for input events.
-- **Components**:
-    - `StoryList`: Render list of stories using `ratatui::widgets::List`.
-    - `StoryDetail`: Render story details and comments using `ratatui::widgets::Paragraph` and custom layout.
-    - `Status Bar`: Show current mode, loading status, etc.
-- **Navigation**:
-    - `j`/`k` or Up/Down for list navigation.
-    - `Enter` to view story details.
-    - `o` to open in browser.
-    - `Esc` or `q` to go back/quit.
+- [ ] **Progress Indicators**: Improve loading feedback
+  - Better progress bar for "Load All Stories"
+  - Loading spinner for individual story/comment fetches
+  - Network status indicator in status bar
 
-## New Features (Enhancements)
-- [x] **Story Categories**: Support Top, New, Best, Ask, Show, Job lists.
-- [ ] **In-App Article View**: Render article content directly in the TUI.
-- [ ] **Theming**: Support custom themes loaded from JSON files.
+- [ ] **Keyboard Shortcuts Help**: Add `?` key to show all available shortcuts
+  - Overlay or dedicated view
+  - Context-sensitive help (different shortcuts per view mode)
 
-## Verification Plan
-### Automated Tests
-- Run existing unit tests for logic.
-- Add new tests for TUI state transitions.
+### Content Display
+- [ ] **Better Article Rendering**: Improve article readability
+  - Code syntax highlighting in articles
+  - Better handling of links (show URL on select, copy to clipboard)
+  - Image placeholder/notification for images in articles
+  - Table rendering support
 
-### Manual Verification
-- Launch the app in terminal.
-- Navigate story list.
-- Open a story and view comments.
-- Verify "load more" functionality.
-- Verify category switching.
-- Verify article reading.
-- Verify theme switching.
+- [ ] **Comment Threading**: Visualize comment hierarchy
+  - Indentation for nested comments
+  - Tree-like structure with visual guides
+  - Collapse/expand comment threads
+
+- [ ] **Story Metadata Display**: Show more story information
+  - Domain/source in list view
+  - Story age/freshness indicator
+  - User karma/reputation if available
+
+### Navigation & Interaction
+- [ ] **Bookmarks/Favorites**: Save stories for later reading
+  - Local storage of bookmarked story IDs
+  - Dedicated view for bookmarks
+  - Import/export bookmarks
+
+- [ ] **History**: Track recently viewed stories
+  - Last N stories viewed
+  - Clear history option
+
+- [ ] **Search Enhancements**: Improve search functionality
+  - Search in comments, not just titles
+  - Regex search support
+  - Search history
+
+- [ ] **Sorting Options**: Allow sorting stories
+  - By score, comments, time
+  - Ascending/descending toggle
+
+### Configuration & Customization
+- [ ] **Key Binding Customization**: Allow users to remap keys in config.ron
+  - Define custom keybindings per view mode
+  - Conflict detection
+
+- [ ] **UI Customization**: More configurable UI elements
+  - Adjustable padding/margins
+  - Customizable status bar format
+  - List view format customization (show/hide fields)
+
+- [ ] **Theme Editor**: Interactive theme builder
+  - Preview theme changes in real-time
+  - Export custom themes
+
+### Technical Improvements
+- [ ] **Error Handling**: Better user-facing error messages
+  - Show network errors in notification
+  - Retry mechanism for failed requests
+  - Fallback strategies
+
+- [ ] **Logging**: Better tracing and debugging
+  - Log rotation configuration in config.ron
+  - Different log levels per module
+  - Log viewer in app (debug mode)
+
+- [ ] **Testing**: Expand test coverage
+  - Integration tests for UI flows
+  - Mock API responses for reliable testing
+  - Snapshot tests for rendering
+
+- [ ] **Async Optimization**: Improve async handling
+  - Concurrent story fetching (batch API calls)
+  - Better cancellation of in-flight requests when switching views
+  - Rate limiting to respect HN API best practices
+
+### Accessibility
+- [ ] **Screen Reader Support**: Improve accessibility
+  - Better text descriptions
+  - Announce loading states
+
+- [ ] **High Contrast Themes**: Built-in high contrast mode
+
+## 📝 Known Issues
+- [ ] Article scroll position doesn't always persist when toggling views
+- [ ] Long titles may wrap awkwardly in list view
+- [ ] Theme switching doesn't refresh immediately in all cases
+
+## 🎯 Next Recommended Tasks
+
+Based on current codebase maturity, I recommend prioritizing:
+
+1. **Comment Pagination** - Currently the biggest limitation (only 10 comments shown)
+2. **Keyboard Shortcuts Help** - Improves discoverability for new users
+3. **Caching Layer** - Significant performance improvement
+4. **Better Error Handling** - More robust user experience
+5. **Comment Threading** - Much better UX for reading discussions
+
+## Version Planning
+
+### v0.3.0 (Next Minor Release)
+- Comment pagination
+- Help screen (`?` key)
+- Basic caching
+- Improved error messages
+
+### v0.4.0 (Future)
+- Comment threading/indentation
+- Bookmarks/favorites
+- History tracking
+
+### v1.0.0 (Stable)
+- Complete feature parity with web interface
+- Comprehensive test coverage
+- Performance optimizations
+- All accessibility features

@@ -236,6 +236,16 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
             })
             .collect();
 
+        let comments_title = if app.comment_ids.is_empty() {
+            "Comments (Tab to view Article)".to_string()
+        } else {
+            format!(
+                "Comments ({}/{}) - n: Load More | Tab: Article",
+                app.loaded_comments_count,
+                app.comment_ids.len()
+            )
+        };
+
         let list = List::new(comments_text)
             .style(Style::default().bg(app.theme.background))
             .block(
@@ -243,7 +253,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
                     .borders(Borders::ALL)
                     .padding(Padding::horizontal(1))
                     .border_style(Style::default().fg(app.theme.border))
-                    .title("Comments (Tab to view Article)")
+                    .title(comments_title)
                     .title_style(Style::default().fg(app.theme.foreground)),
             );
         f.render_widget(list, chunks[1]);
@@ -407,7 +417,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 )
             }
             ViewMode::StoryDetail => {
-                "Esc/q: Back | o: Browser | Tab: Article | t: Theme".to_string()
+                "Esc/q: Back | o: Browser | n: More Comments | Tab: Article | t: Theme".to_string()
             }
             ViewMode::Article => {
                 "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme".to_string()

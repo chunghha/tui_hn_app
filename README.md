@@ -102,15 +102,22 @@ If you prefer direct cargo commands:
 
 ## Keyboard Shortcuts
 
-- `j` / `k` — navigate down/up through lists
-- `Enter` — open selected story (detail view)
-- `Tab` — toggle between Comments and Article view (Article view fetches the article for the currently selected story)
-- `/` — enter search mode to filter story list
-- `1..6` — switch story categories (Top, New, Best, Ask, Show, Job)
-- `t` — switch theme (cycles through loaded theme variants)
-- `q` or `Esc` — back / quit depending on the view
-- `m` — load more stories (pagination)
-- `A` — load all remaining stories (progress overlay shown)
+| Key | Action |
+|-----|--------|
+| `1`-`6` | Switch story category (Top, New, Best, Ask, Show, Job) |
+| `j` / `↓` | Move down in list / Scroll article down |
+| `k` / `↑` | Move up in list / Scroll article up |
+| `Enter` | View selected story |
+| `Tab` | Toggle between Article and Comments view |
+| `o` | Open story URL in browser |
+| `n` | Load more comments (in Comments view) |
+| `/` | Enter search mode (filter stories) |
+| `C` | Clear search filter |
+| `m` | Load more stories (next 20) |
+| `A` | Load all remaining stories |
+| `t` | Cycle through themes |
+| `g` | Toggle auto-switch dark to light |
+| `Esc` / `q` | Go back / Quit |
 
 ## Behavior notes / UX details
 

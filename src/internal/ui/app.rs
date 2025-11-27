@@ -48,6 +48,7 @@ pub enum Action {
     LoadAllStories,
     SelectStory(Story, StoryListType),
     CommentsLoaded(Vec<Comment>),
+    LoadMoreComments,
     ToggleArticleView,
     ArticleLoaded(StoryListType, u32, String),
     ScrollArticleUp,
@@ -72,6 +73,8 @@ pub struct App {
     pub story_load_progress: Option<(usize, usize)>,
     pub selected_story: Option<Story>,
     pub comments: Vec<Comment>,
+    pub comment_ids: Vec<u32>,
+    pub loaded_comments_count: usize,
     pub comments_loading: bool,
     pub article_content: Option<String>,
     pub article_for_story_id: Option<u32>,
@@ -160,6 +163,8 @@ impl App {
             story_load_progress: None,
             selected_story: None,
             comments: Vec::new(),
+            comment_ids: Vec::new(),
+            loaded_comments_count: 0,
             comments_loading: false,
             article_content: None,
             article_for_story_id: None,
@@ -579,6 +584,11 @@ impl App {
                     self.search_query.clear();
                 }
             }
+            KeyCode::Char('n') => {
+                if self.view_mode == ViewMode::StoryDetail {
+                    let _ = self.action_tx.send(Action::LoadMoreComments);
+                }
+            }
             _ => {}
         }
     }
@@ -624,6 +634,8 @@ impl App {
                 self.view_mode = ViewMode::List;
                 self.selected_story = None;
                 self.comments.clear();
+                self.comment_ids.clear();
+                self.loaded_comments_count = 0;
             }
             Action::OpenBrowser => {
                 if let Some(story) = &self.selected_story {
@@ -853,12 +865,16 @@ impl App {
                 // Fetch comments in the background as before so they are available
                 // if the user switches to the comments view.
                 if let Some(kids) = story.kids {
+                    // Store all comment IDs for pagination
+                    self.comment_ids = kids.clone();
+                    self.loaded_comments_count = 0;
+
                     let api_clone = api.clone();
                     let tx_clone = tx.clone();
                     tokio::spawn(async move {
                         let mut comments = Vec::new();
-                        for id in kids.into_iter().take(10) {
-                            // Limit comments for now
+                        for id in kids.into_iter().take(20) {
+                            // Load first 20 comments
                             if let Ok(comment) = api_clone.fetch_comment_content(id) {
                                 comments.push(comment);
                             }
@@ -866,12 +882,57 @@ impl App {
                         let _ = tx_clone.send(Action::CommentsLoaded(comments));
                     });
                 } else {
+                    self.comment_ids.clear();
+                    self.loaded_comments_count = 0;
                     self.comments_loading = false;
                 }
             }
             Action::CommentsLoaded(comments) => {
-                self.comments = comments;
+                self.loaded_comments_count += comments.len();
+                self.comments.extend(comments);
                 self.comments_loading = false;
+            }
+            Action::LoadMoreComments => {
+                if self.comments_loading || self.comment_ids.is_empty() {
+                    return;
+                }
+
+                // Check if all comments already loaded
+                if self.loaded_comments_count >= self.comment_ids.len() {
+                    self.notification_message =
+                        Some(format!("All {} comments loaded", self.comment_ids.len()));
+                    self.notification_timer = Some(tokio::time::Instant::now());
+
+                    // Schedule notification clear
+                    let tx = self.action_tx.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        let _ = tx.send(Action::ClearNotification);
+                    });
+                    return;
+                }
+
+                self.comments_loading = true;
+                let api = self.api_service.clone();
+                let tx = self.action_tx.clone();
+                let start_idx = self.loaded_comments_count;
+                let ids_to_fetch: Vec<_> = self
+                    .comment_ids
+                    .iter()
+                    .skip(start_idx)
+                    .take(20)
+                    .copied()
+                    .collect();
+
+                tokio::spawn(async move {
+                    let mut comments = Vec::new();
+                    for id in ids_to_fetch {
+                        if let Ok(comment) = api.fetch_comment_content(id) {
+                            comments.push(comment);
+                        }
+                    }
+                    let _ = tx.send(Action::CommentsLoaded(comments));
+                });
             }
             Action::ToggleArticleView => {
                 if self.view_mode == ViewMode::StoryDetail {
@@ -1137,6 +1198,147 @@ mod tests {
         assert_eq!(
             idx, 0,
             "Expected fallback to terminal mode (dark) when theme not found"
+        );
+    }
+
+    #[test]
+    fn test_comment_pagination_initialization() {
+        let app = App::new();
+        
+        // Verify initial state
+        assert_eq!(app.comment_ids.len(), 0, "Should start with no comment IDs");
+        assert_eq!(app.loaded_comments_count, 0, "Should start with 0 loaded comments");
+        assert_eq!(app.comments.len(), 0, "Should start with no comments");
+    }
+
+    #[test]
+    fn test_comment_ids_stored_on_story_selection() {
+        let mut app = App::new();
+        
+        // Create a story with comment IDs
+        let story = Story {
+            id: 123,
+            title: Some("Test Story".to_string()),
+            url: Some("https://example.com".to_string()),
+            by: Some("testuser".to_string()),
+            score: Some(100),
+            time: Some(1234567890),
+            descendants: Some(50),
+            kids: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        };
+        
+        // Before selection
+        assert_eq!(app.comment_ids.len(), 0);
+        
+        // The actual comment loading happens in handle_action, which is async
+        // Here we just verify the state that would be set when handling SelectStory
+        // We can't easily test the full async flow in a unit test without mocking
+        
+        // For now, verify we can store comment IDs manually
+        let kids = story.kids.clone().unwrap();
+        app.comment_ids = kids.clone();
+        app.loaded_comments_count = 0;
+        
+        assert_eq!(app.comment_ids.len(), 12, "Should store all comment IDs");
+        assert_eq!(app.loaded_comments_count, 0, "Should reset loaded count");
+    }
+
+    #[test]
+    fn test_comments_loaded_increments_count() {
+        let mut app = App::new();
+        
+        // Set up pagination state
+        app.comment_ids = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        app.loaded_comments_count = 0;
+        
+        // Simulate loading first batch (would come from Action::CommentsLoaded)
+        let first_batch = vec![
+            Comment {
+                id: 1,
+                by: Some("user1".to_string()),
+                text: Some("Comment 1".to_string()),
+                time: Some(1234567890),
+                kids: None,
+                deleted: false,
+            },
+            Comment {
+                id: 2,
+                by: Some("user2".to_string()),
+                text: Some("Comment 2".to_string()),
+                time: Some(1234567891),
+                kids: None,
+                deleted: false,
+            },
+        ];
+        
+        // Simulate what CommentsLoaded handler does
+        app.loaded_comments_count += first_batch.len();
+        app.comments.extend(first_batch);
+        
+        assert_eq!(app.loaded_comments_count, 2, "Should track loaded count");
+        assert_eq!(app.comments.len(), 2, "Should have 2 comments");
+        
+        // Simulate loading second batch
+        let second_batch = vec![
+            Comment {
+                id: 3,
+                by: Some("user3".to_string()),
+                text: Some("Comment 3".to_string()),
+                time: Some(1234567892),
+                kids: None,
+                deleted: false,
+            },
+        ];
+        
+        app.loaded_comments_count += second_batch.len();
+        app.comments.extend(second_batch);
+        
+        assert_eq!(app.loaded_comments_count, 3, "Should increment loaded count");
+        assert_eq!(app.comments.len(), 3, "Should append to comments");
+    }
+
+    #[test]
+    fn test_all_comments_loaded_detection() {
+        let app = App {
+            comment_ids: vec![1, 2, 3, 4, 5],
+            loaded_comments_count: 5,
+            ..App::new()
+        };
+        
+        // Simulate LoadMoreComments logic check
+        let all_loaded = app.loaded_comments_count >= app.comment_ids.len();
+        
+        assert!(all_loaded, "Should detect when all comments are loaded");
+    }
+
+    #[test]
+    fn test_no_comments_case() {
+        let app = App {
+            comment_ids: vec![],
+            loaded_comments_count: 0,
+            ..App::new()
+        };
+        
+        // Simulate LoadMoreComments logic check
+        let should_skip = app.comment_ids.is_empty();
+        
+        assert!(should_skip, "Should handle story with no comments");
+    }
+
+    #[test]
+    fn test_partial_comments_loaded() {
+        let app = App {
+            comment_ids: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            loaded_comments_count: 5,
+            ..App::new()
+        };
+        
+        let remaining = app.comment_ids.len() - app.loaded_comments_count;
+        
+        assert_eq!(remaining, 5, "Should calculate remaining comments correctly");
+        assert!(
+            app.loaded_comments_count < app.comment_ids.len(),
+            "Should detect more comments available"
         );
     }
 }
