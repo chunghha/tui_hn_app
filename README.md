@@ -70,6 +70,9 @@ src/
   - Search history navigation with `↑`/`↓` arrows
   - Persistent search history (last 20 searches)
   - Live regex error feedback
+- **Sorting Options** (v0.5.3)
+  - Sort by Score, Comments, or Time
+  - Toggle Ascending/Descending order
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments
@@ -150,7 +153,7 @@ If you prefer direct cargo commands:
 | `o` | Open story URL in browser |
 | `n` | Load more comments (in Comments view) |
 | `/` | Enter search mode (filter stories) |
-| `C` | Clear search filter |
+| `Q` | Clear search filter |
 | `m` | Load more stories (next 20) |
 | `A` | Load all remaining stories |
 | `b` | Toggle bookmark on selected story |
@@ -158,6 +161,10 @@ If you prefer direct cargo commands:
 | `H` | View history |
 | `X` | Clear history (in History view) |
 | `t` | Cycle through themes |
+| `S` | Sort by Score |
+| `C` | Sort by Comments |
+| `T` | Sort by Time |
+| `O` | Toggle sort order (Asc/Desc) |
 | `g` | Toggle auto-switch dark to light |
 | `Esc` / `q` | Go back / Quit |
 

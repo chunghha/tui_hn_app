@@ -44,6 +44,7 @@ pub struct CommentRow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum ArticleElement {
     Paragraph(String),
     Heading(usize, String), // level, text
@@ -55,6 +56,7 @@ pub enum ArticleElement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub struct Article {
     pub title: String,
     pub elements: Vec<ArticleElement>,

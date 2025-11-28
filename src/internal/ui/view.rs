@@ -10,6 +10,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph
 use textwrap;
 
 use super::app::{App, InputMode, ViewMode};
+use super::sort::{SortBy, SortOrder};
 
 pub fn draw(app: &mut App, f: &mut Frame) {
     let chunks = Layout::default()
@@ -255,10 +256,23 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
         .collect();
 
     // Place the version next to the "Hacker News" label in the title
+    let sort_indicator = format!(
+        " (sorted by {} {})",
+        match app.sort_by {
+            SortBy::Score => "Score",
+            SortBy::Comments => "Comments",
+            SortBy::Time => "Time",
+        },
+        match app.sort_order {
+            SortOrder::Ascending => "asc",
+            SortOrder::Descending => "desc",
+        }
+    );
+
     let title = match app.search_query.is_empty() {
         true => format!(
-            "Hacker News v{} - {}",
-            app.app_version, app.current_list_type
+            "Hacker News v{} - {}{}",
+            app.app_version, app.current_list_type, sort_indicator
         ),
         false => format!(
             "Hacker News v{} - {} (Filter: {} [{}|{}])",
@@ -713,7 +727,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 q => format!(" | Filter: {}", q),
             };
             let clear_hint = match app.search_query.is_empty() {
-                false => " | C: Clear",
+                false => " | Q: Clear",
                 true => "",
             };
             format!(
@@ -863,7 +877,7 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
 
     // Create centered popup
     let popup_width = 56.min(area.width - 4);
-    let popup_height = 30.min(area.height - 4);
+    let popup_height = 32.min(area.height - 4);
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
     let popup_y = (area.height.saturating_sub(popup_height)) / 2;
@@ -950,6 +964,16 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
             Span::raw("  "),
             Span::styled("1-6", Style::default().fg(app.theme.comment_time)),
             Span::raw("      Switch categories (Top, New, Best...)"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("S/C/T", Style::default().fg(app.theme.comment_time)),
+            Span::raw("    Sort by Score/Comments/Time"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("O", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Toggle sort order (asc/desc)"),
         ]),
         Line::from(vec![
             Span::raw("  "),

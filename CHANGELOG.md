@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2025-11-28
+
+### Added
+- **Sorting Options**: Sort stories by Score, Comments, or Time
+  - Toggle sort order (Ascending/Descending) with `O` key
+  - Shortcuts: `S` (Score), `C` (Comments), `T` (Time)
+  - Visual indicator in list title showing current sort mode
+- Unit tests for sorting logic
+
 ## [0.5.2] - 2025-11-28
 
 ### Added

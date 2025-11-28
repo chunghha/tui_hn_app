@@ -83,7 +83,8 @@
   - Regex search support
   - Search history
 
-- [ ] **Sorting Options**: Allow sorting stories
+- [x] **Sorting Options**: Allow sorting stories
+  - ✅ Implemented in v0.5.3
   - By score, comments, time
   - Ascending/descending toggle
 

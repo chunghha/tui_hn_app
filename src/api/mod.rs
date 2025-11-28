@@ -9,7 +9,6 @@ use strum_macros::Display;
 
 /// Types of Hacker News story lists we can fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
-#[allow(dead_code)]
 pub enum StoryListType {
     Best,
     Top,

@@ -26,6 +26,10 @@ tasks:
     deps: [build]
     cmds:
       - RUST_LOG=debug target/release/$PGM_NAME
+  install:
+    deps: [build]
+    cmds:
+      - cp target/release/$PGM_NAME ~/bin/$PGM_NAME
   typo:
     cmds:
       - typos src/**/*.rs

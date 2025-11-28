@@ -11,6 +11,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crate::api::{ApiService, StoryListType};
 use crate::config::AppConfig;
 use crate::internal::models::{Article, CommentRow, Story};
+use crate::internal::ui::sort::{SortBy, SortOrder};
 use crate::utils::theme_loader::{TuiTheme, load_theme};
 
 use ratatui::Frame;
@@ -56,17 +57,18 @@ pub enum Action {
     #[allow(dead_code)]
     ToggleCommentCollapse(usize),
     ToggleArticleView,
-    #[allow(dead_code)]
     ToggleHelp,
     ArticleLoaded(StoryListType, u32, Article),
     ScrollArticleUp,
     ScrollArticleDown,
+    SortByScore,
+    SortByComments,
+    SortByTime,
+    ToggleSortOrder,
     SwitchTheme,
     ClearNotification,
     Error(String),
-    #[allow(dead_code)]
     ToggleBookmark,
-    #[allow(dead_code)]
     ViewBookmarks,
     #[allow(dead_code)]
     ExportBookmarks,
@@ -86,6 +88,8 @@ pub struct App {
     pub loaded_count: usize,
     pub story_list_state: ListState,
     pub current_list_type: StoryListType,
+    pub sort_by: SortBy,
+    pub sort_order: SortOrder,
     pub api_service: Arc<ApiService>,
     pub loading: bool,
     pub story_load_progress: Option<(usize, usize)>,
@@ -204,6 +208,8 @@ impl App {
             loaded_count: 0,
             story_list_state: ListState::default(),
             current_list_type: StoryListType::Top,
+            sort_by: SortBy::Time,
+            sort_order: SortOrder::Descending,
             api_service,
             loading: false,
             story_load_progress: None,
@@ -752,6 +758,18 @@ impl App {
             KeyCode::Char('6') => {
                 let _ = self.action_tx.send(Action::LoadStories(StoryListType::Job));
             }
+            KeyCode::Char('S') => {
+                let _ = self.action_tx.send(Action::SortByScore);
+            }
+            KeyCode::Char('C') => {
+                let _ = self.action_tx.send(Action::SortByComments);
+            }
+            KeyCode::Char('T') => {
+                let _ = self.action_tx.send(Action::SortByTime);
+            }
+            KeyCode::Char('O') => {
+                let _ = self.action_tx.send(Action::ToggleSortOrder);
+            }
             KeyCode::Char('t') => {
                 let _ = self.action_tx.send(Action::SwitchTheme);
             }
@@ -821,7 +839,7 @@ impl App {
                     self.history_index = None;
                 }
             }
-            KeyCode::Char('C') => {
+            KeyCode::Char('Q') => {
                 if !self.search_query.is_empty() {
                     self.search_query = crate::internal::search::SearchQuery::default();
                     self.temp_search_input.clear();
@@ -987,6 +1005,7 @@ impl App {
                 // Update loaded count and append stories
                 self.loaded_count += stories.len();
                 self.stories.extend(stories);
+                self.sort_stories();
                 self.loading = false;
                 self.story_load_progress = None;
                 if let (true, None) = (!self.stories.is_empty(), self.story_list_state.selected()) {
@@ -1063,6 +1082,7 @@ impl App {
                         }
                         false => {
                             self.loading = true;
+                            // TODO: Re-enable asynchronous loading for "Load All" feature
                             let api = self.api_service.clone();
                             let tx = self.action_tx.clone();
                             let start_idx = self.loaded_count;
@@ -1254,6 +1274,25 @@ impl App {
             }
             Action::ScrollArticleDown => {
                 self.article_scroll += 1;
+            }
+            Action::SortByScore => {
+                self.sort_by = SortBy::Score;
+                self.sort_stories();
+            }
+            Action::SortByComments => {
+                self.sort_by = SortBy::Comments;
+                self.sort_stories();
+            }
+            Action::SortByTime => {
+                self.sort_by = SortBy::Time;
+                self.sort_stories();
+            }
+            Action::ToggleSortOrder => {
+                self.sort_order = match self.sort_order {
+                    SortOrder::Ascending => SortOrder::Descending,
+                    SortOrder::Descending => SortOrder::Ascending,
+                };
+                self.sort_stories();
             }
             Action::SwitchTheme => {
                 if self.available_themes.is_empty() {
@@ -1546,6 +1585,21 @@ impl App {
                 })
                 .collect(),
         }
+    }
+
+    fn sort_stories(&mut self) {
+        self.stories.sort_unstable_by(|a, b| {
+            let ordering = match self.sort_by {
+                SortBy::Score => a.score.cmp(&b.score),
+                SortBy::Comments => a.descendants.cmp(&b.descendants),
+                SortBy::Time => a.time.cmp(&b.time),
+            };
+
+            match self.sort_order {
+                SortOrder::Ascending => ordering,
+                SortOrder::Descending => ordering.reverse(),
+            }
+        });
     }
 
     fn select_next(&mut self) {
@@ -1870,5 +1924,131 @@ mod tests {
 
         app.show_help = !app.show_help;
         assert!(!app.show_help, "Help should be hidden after second toggle");
+    }
+    #[test]
+    fn test_sort_stories() {
+        use crate::internal::ui::sort::{SortBy, SortOrder};
+
+        let mut app = App::new();
+
+        // Create sample stories
+        let s1 = Story {
+            id: 1,
+            title: Some("Story 1".to_string()),
+            score: Some(100),
+            time: Some(1000),
+            descendants: Some(50),
+            ..Default::default()
+        };
+        let s2 = Story {
+            id: 2,
+            title: Some("Story 2".to_string()),
+            score: Some(200),
+            time: Some(2000),
+            descendants: Some(10),
+            ..Default::default()
+        };
+        let s3 = Story {
+            id: 3,
+            title: Some("Story 3".to_string()),
+            score: Some(50),
+            time: Some(3000),
+            descendants: Some(100),
+            ..Default::default()
+        };
+
+        app.stories = vec![s1.clone(), s2.clone(), s3.clone()];
+
+        // Test Sort by Score (Descending - default high to low)
+        app.sort_by = SortBy::Score;
+        app.sort_order = SortOrder::Descending;
+        app.sort_stories();
+        assert_eq!(app.stories[0].id, 2); // 200
+        assert_eq!(app.stories[1].id, 1); // 100
+        assert_eq!(app.stories[2].id, 3); // 50
+
+        // Test Sort by Score (Ascending)
+        app.sort_order = SortOrder::Ascending;
+        app.sort_stories();
+        assert_eq!(app.stories[0].id, 3); // 50
+        assert_eq!(app.stories[1].id, 1); // 100
+        assert_eq!(app.stories[2].id, 2); // 200
+
+        // Test Sort by Time (Descending - newest first)
+        app.sort_by = SortBy::Time;
+        app.sort_order = SortOrder::Descending;
+        app.sort_stories();
+        assert_eq!(app.stories[0].id, 3); // 3000
+        assert_eq!(app.stories[1].id, 2); // 2000
+        assert_eq!(app.stories[2].id, 1); // 1000
+
+        // Test Sort by Comments (Descending - most comments first)
+        app.sort_by = SortBy::Comments;
+        app.sort_order = SortOrder::Descending;
+        app.sort_stories();
+        assert_eq!(app.stories[0].id, 3); // 100
+        assert_eq!(app.stories[1].id, 1); // 50
+        assert_eq!(app.stories[2].id, 2); // 10
+    }
+
+    #[test]
+    fn test_sort_with_load_more() {
+        use crate::internal::ui::sort::{SortBy, SortOrder};
+
+        let mut app = App::new();
+
+        // 1. Simulate initial load of 2 stories
+        let s1 = Story {
+            id: 1,
+            score: Some(100),
+            ..Default::default()
+        };
+        let s2 = Story {
+            id: 2,
+            score: Some(200),
+            ..Default::default()
+        };
+
+        // Manually simulate the Action::StoriesLoaded effect
+        app.stories.push(s1);
+        app.stories.push(s2);
+        app.loaded_count = 2;
+
+        // Set sort to Score Descending
+        app.sort_by = SortBy::Score;
+        app.sort_order = SortOrder::Descending;
+        app.sort_stories();
+
+        // Verify initial order (200, 100)
+        assert_eq!(app.stories[0].id, 2);
+        assert_eq!(app.stories[1].id, 1);
+
+        // 2. Simulate "Load More" - adding 2 more stories
+        // One has a VERY high score, one low
+        let s3 = Story {
+            id: 3,
+            score: Some(300),
+            ..Default::default()
+        };
+        let s4 = Story {
+            id: 4,
+            score: Some(50),
+            ..Default::default()
+        };
+
+        let new_stories = vec![s3, s4];
+
+        // Apply the logic from Action::StoriesLoaded
+        app.loaded_count += new_stories.len();
+        app.stories.extend(new_stories);
+        app.sort_stories(); // This is the key step
+
+        // 3. Verify ALL 4 stories are sorted correctly
+        // Order should be: s3(300), s2(200), s1(100), s4(50)
+        assert_eq!(app.stories.len(), 4);
+        assert_eq!(app.stories[0].id, 3); // 300
+        assert_eq!(app.stories[1].id, 2); // 200
+        assert_eq!(app.stories[2].id, 1); // 100
+        assert_eq!(app.stories[3].id, 4); // 50
     }
 }
