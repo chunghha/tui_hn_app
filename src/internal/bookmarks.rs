@@ -3,6 +3,7 @@ use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tracing::info;
 
 use super::models::Story;
 
@@ -30,29 +31,45 @@ impl Bookmarks {
     }
 
     pub fn load_or_create() -> Result<Self> {
+        // Resolve the OS-specific config directory and append our app folder.
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
             .join("tui-hn-app");
 
+        // Log the resolved config directory for diagnostics.
+        info!(config_dir = %config_dir.display(), "Resolved config directory for bookmarks");
+
         if !config_dir.exists() {
-            fs::create_dir_all(&config_dir)?
+            // Create the directory and log the creation.
+            fs::create_dir_all(&config_dir).with_context(|| {
+                format!("Failed to create config directory {}", config_dir.display())
+            })?;
+            info!(config_dir = %config_dir.display(), "Created config directory for bookmarks");
+        } else {
+            info!(config_dir = %config_dir.display(), "Config directory already exists");
         }
 
         let file_path = config_dir.join("bookmarks.json");
+        info!(bookmarks_file = %file_path.display(), "Resolved bookmarks file path");
 
         match file_path.exists() {
             true => {
+                info!(bookmarks_file = %file_path.display(), "Bookmarks file exists, attempting to read");
                 let content =
                     fs::read_to_string(&file_path).context("Failed to read bookmarks file")?;
                 let mut bookmarks: Bookmarks =
                     serde_json::from_str(&content).context("Failed to parse bookmarks file")?;
-                bookmarks.file_path = Some(file_path);
+                bookmarks.file_path = Some(file_path.clone());
+                info!(bookmarks_file = %file_path.display(), "Loaded bookmarks from file");
                 Ok(bookmarks)
             }
-            false => Ok(Self {
-                stories: Vec::new(),
-                file_path: Some(file_path),
-            }),
+            false => {
+                info!(bookmarks_file = %file_path.display(), "No bookmarks file found, initializing empty bookmarks with file path set");
+                Ok(Self {
+                    stories: Vec::new(),
+                    file_path: Some(file_path),
+                })
+            }
         }
     }
 
@@ -61,6 +78,9 @@ impl Bookmarks {
             let content =
                 serde_json::to_string_pretty(self).context("Failed to serialize bookmarks")?;
             fs::write(path, content).context("Failed to write bookmarks file")?;
+            info!(bookmarks_file = %path.display(), "Saved bookmarks to file");
+        } else {
+            info!("Bookmarks.save() called but no file_path is set; skipping write");
         }
         Ok(())
     }

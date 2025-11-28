@@ -53,7 +53,11 @@ src/
 - **Bookmarks/Favorites system** (v0.5.0)
   - Save stories for later reading with `b` key
   - View all bookmarks with `B` key
-  - Persistent storage in `~/.config/tui-hn-app/bookmarks.json`
+  - Persistent storage: platform-dependent (resolved via `dirs::config_dir()`):
+    - Linux / Unix (and when `XDG_CONFIG_HOME` is set): `~/.config/tui-hn-app/bookmarks.json`
+    - macOS: `~/Library/Application Support/tui-hn-app/bookmarks.json`
+    - To force a specific location on Linux/Unix, set `XDG_CONFIG_HOME` before launching the app. Example:
+      `export XDG_CONFIG_HOME="$HOME/.config"` then run the app so bookmarks will be stored under `$XDG_CONFIG_HOME/tui-hn-app/bookmarks.json`
   - Import/export functionality
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
