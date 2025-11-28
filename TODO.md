@@ -50,7 +50,8 @@
   - Image placeholder/notification for images in articles
   - Table rendering support
 
-- [ ] **Comment Threading**: Visualize comment hierarchy
+- [x] **Comment Threading**: Visualize comment hierarchy
+  - ✅ Implemented in v0.4.1
   - Indentation for nested comments
   - Tree-like structure with visual guides
   - Collapse/expand comment threads

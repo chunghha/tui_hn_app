@@ -36,6 +36,14 @@ pub struct Comment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CommentRow {
+    pub comment: Comment,
+    pub depth: usize,
+    pub expanded: bool,
+    pub parent_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArticleElement {
     Paragraph(String),
     Heading(usize, String), // level, text

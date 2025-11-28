@@ -9,7 +9,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 
 use crate::api::{ApiService, StoryListType};
 use crate::config::AppConfig;
-use crate::internal::models::{Article, Comment, Story};
+use crate::internal::models::{Article, CommentRow, Story};
 use crate::utils::theme_loader::{TuiTheme, load_theme};
 
 use ratatui::Frame;
@@ -46,8 +46,10 @@ pub enum Action {
     LoadMoreStories,
     LoadAllStories,
     SelectStory(Story, StoryListType),
-    CommentsLoaded(Vec<Comment>),
+    CommentsLoaded(Vec<CommentRow>),
     LoadMoreComments,
+    #[allow(dead_code)]
+    ToggleCommentCollapse(usize),
     ToggleArticleView,
     #[allow(dead_code)]
     ToggleHelp,
@@ -73,7 +75,7 @@ pub struct App {
     pub loading: bool,
     pub story_load_progress: Option<(usize, usize)>,
     pub selected_story: Option<Story>,
-    pub comments: Vec<Comment>,
+    pub comments: Vec<CommentRow>,
     pub comment_ids: Vec<u32>,
     pub loaded_comments_count: usize,
     pub comments_loading: bool,
@@ -919,14 +921,10 @@ impl App {
                     let api_clone = api.clone();
                     let tx_clone = tx.clone();
                     tokio::spawn(async move {
-                        let mut comments = Vec::new();
-                        for id in kids.into_iter().take(20) {
-                            // Load first 20 comments
-                            if let Ok(comment) = api_clone.fetch_comment_content(id) {
-                                comments.push(comment);
-                            }
+                        // Use fetch_comment_tree to get threaded comments
+                        if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids) {
+                            let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
                         }
-                        let _ = tx_clone.send(Action::CommentsLoaded(comments));
                     });
                 } else {
                     self.comment_ids.clear();
@@ -934,59 +932,30 @@ impl App {
                     self.comments_loading = false;
                 }
             }
-            Action::CommentsLoaded(comments) => {
-                // If we had no comments loaded before, ensure the comments list state
-                // starts at the top when the first batch arrives.
-                let initial_loaded = self.loaded_comments_count;
-                self.loaded_comments_count += comments.len();
-                self.comments.extend(comments);
+            Action::CommentsLoaded(comment_rows) => {
+                // Replace existing comments with the new tree
+                self.loaded_comments_count = comment_rows.len();
+                self.comments = comment_rows;
                 self.comments_loading = false;
-                if initial_loaded == 0 {
-                    // Reset scroll to top for first batch
-                    self.comments_scroll = 0;
-                }
+                self.comments_scroll = 0;
             }
             Action::LoadMoreComments => {
-                if self.comments_loading || self.comment_ids.is_empty() {
-                    return;
-                }
+                // With fetch_comment_tree, we load all comments at once (up to MAX_COMMENTS limit)
+                // So this action is essentially a no-op for now
+                self.notification_message = Some("All comments already loaded".to_string());
+                self.notification_timer = Some(tokio::time::Instant::now());
 
-                // Check if all comments already loaded
-                if self.loaded_comments_count >= self.comment_ids.len() {
-                    self.notification_message =
-                        Some(format!("All {} comments loaded", self.comment_ids.len()));
-                    self.notification_timer = Some(tokio::time::Instant::now());
-
-                    // Schedule notification clear
-                    let tx = self.action_tx.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        let _ = tx.send(Action::ClearNotification);
-                    });
-                    return;
-                }
-
-                self.comments_loading = true;
-                let api = self.api_service.clone();
+                // Schedule notification clear
                 let tx = self.action_tx.clone();
-                let start_idx = self.loaded_comments_count;
-                let ids_to_fetch: Vec<_> = self
-                    .comment_ids
-                    .iter()
-                    .skip(start_idx)
-                    .take(20)
-                    .copied()
-                    .collect();
-
                 tokio::spawn(async move {
-                    let mut comments = Vec::new();
-                    for id in ids_to_fetch {
-                        if let Ok(comment) = api.fetch_comment_content(id) {
-                            comments.push(comment);
-                        }
-                    }
-                    let _ = tx.send(Action::CommentsLoaded(comments));
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    let _ = tx.send(Action::ClearNotification);
                 });
+            }
+            Action::ToggleCommentCollapse(index) => {
+                if let Some(row) = self.comments.get_mut(index) {
+                    row.expanded = !row.expanded;
+                }
             }
             Action::ToggleArticleView => {
                 if self.view_mode == ViewMode::StoryDetail {
@@ -1341,57 +1310,54 @@ mod tests {
 
     #[test]
     fn test_comments_loaded_increments_count() {
+        use crate::internal::models::Comment;
+        use crate::internal::models::CommentRow;
         let mut app = App::new();
 
         // Set up pagination state
         app.comment_ids = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         app.loaded_comments_count = 0;
 
-        // Simulate loading first batch (would come from Action::CommentsLoaded)
+        // Simulate loading first batch with threaded comments
         let first_batch = vec![
-            Comment {
-                id: 1,
-                by: Some("user1".to_string()),
-                text: Some("Comment 1".to_string()),
-                time: Some(1234567890),
-                kids: None,
-                deleted: false,
+            CommentRow {
+                comment: Comment {
+                    id: 1,
+                    by: Some("user1".to_string()),
+                    text: Some("Comment 1".to_string()),
+                    time: Some(1234567890),
+                    kids: None,
+                    deleted: false,
+                },
+                depth: 0,
+                expanded: true,
+                parent_id: None,
             },
-            Comment {
-                id: 2,
-                by: Some("user2".to_string()),
-                text: Some("Comment 2".to_string()),
-                time: Some(1234567891),
-                kids: None,
-                deleted: false,
+            CommentRow {
+                comment: Comment {
+                    id: 2,
+                    by: Some("user2".to_string()),
+                    text: Some("Comment 2".to_string()),
+                    time: Some(1234567891),
+                    kids: None,
+                    deleted: false,
+                },
+                depth: 0,
+                expanded: true,
+                parent_id: None,
             },
         ];
 
-        // Simulate what CommentsLoaded handler does
-        app.loaded_comments_count += first_batch.len();
-        app.comments.extend(first_batch);
+        // Simulate what CommentsLoaded handler does (it now replaces, not extends)
+        app.loaded_comments_count = first_batch.len();
+        app.comments = first_batch;
 
         assert_eq!(app.loaded_comments_count, 2, "Should track loaded count");
         assert_eq!(app.comments.len(), 2, "Should have 2 comments");
 
-        // Simulate loading second batch
-        let second_batch = vec![Comment {
-            id: 3,
-            by: Some("user3".to_string()),
-            text: Some("Comment 3".to_string()),
-            time: Some(1234567892),
-            kids: None,
-            deleted: false,
-        }];
-
-        app.loaded_comments_count += second_batch.len();
-        app.comments.extend(second_batch);
-
-        assert_eq!(
-            app.loaded_comments_count, 3,
-            "Should increment loaded count"
-        );
-        assert_eq!(app.comments.len(), 3, "Should append to comments");
+        // Test that we can access the comment data
+        assert_eq!(app.comments[0].comment.id, 1);
+        assert_eq!(app.comments[1].comment.id, 2);
     }
 
     #[test]

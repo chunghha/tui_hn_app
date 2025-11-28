@@ -228,18 +228,60 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
         let comment_area_width = chunks[1].width.saturating_sub(4).max(20) as usize; // Ensure minimum width
 
         let mut all_lines: Vec<Line> = Vec::new();
-        for c in &app.comments {
-            let author = c.by.as_deref().unwrap_or("unknown");
-            let text = c.text.as_deref().unwrap_or("[deleted]");
+        let mut skip_until_depth: Option<usize> = None;
+
+        for row in &app.comments {
+            // Skip collapsed children
+            if let Some(until_depth) = skip_until_depth {
+                if row.depth > until_depth {
+                    continue;
+                } else {
+                    skip_until_depth = None;
+                }
+            }
+
+            let author = row.comment.by.as_deref().unwrap_or("unknown");
+            let text = row.comment.text.as_deref().unwrap_or("[deleted]");
             let clean_text = crate::utils::html::extract_text_from_html(text);
-            let time = c
+            let time = row
+                .comment
                 .time
                 .as_ref()
                 .map(crate::utils::datetime::format_timestamp)
                 .unwrap_or_else(|| "unknown".to_string());
 
-            // Author and time line
+            // Indentation and visual guides
+            let indent = "  ".repeat(row.depth);
+            let mut guide = String::new();
+            for i in 0..row.depth {
+                if i < row.depth - 1 {
+                    guide.push_str("│ ");
+                } else {
+                    guide.push_str("└─");
+                }
+            }
+
+            // Collapse indicator
+            let has_kids =
+                row.comment.kids.is_some() && !row.comment.kids.as_ref().unwrap().is_empty();
+            let collapse_indicator = if has_kids {
+                if row.expanded { "[-] " } else { "[+] " }
+            } else {
+                ""
+            };
+
+            // Set skip flag if collapsed
+            if has_kids && !row.expanded {
+                skip_until_depth = Some(row.depth);
+            }
+
+            // Author and time line with indentation
             all_lines.push(Line::from(vec![
+                Span::styled(guide.clone(), Style::default().fg(app.theme.border)),
+                Span::styled(
+                    collapse_indicator,
+                    Style::default().fg(app.theme.comment_time),
+                ),
                 Span::styled(author, Style::default().fg(app.theme.comment_author)),
                 Span::styled(
                     format!(" ({})", time),
@@ -247,13 +289,14 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
                 ),
             ]));
 
-            // Wrapped text lines
-            let wrapped_text = textwrap::wrap(&clean_text, comment_area_width);
+            // Wrapped text lines with indentation
+            let available_width = comment_area_width.saturating_sub(row.depth * 2);
+            let wrapped_text = textwrap::wrap(&clean_text, available_width.max(20));
             for line in wrapped_text {
-                all_lines.push(Line::from(Span::styled(
-                    line.to_string(),
-                    Style::default().fg(app.theme.foreground),
-                )));
+                all_lines.push(Line::from(vec![
+                    Span::styled(indent.clone(), Style::default()),
+                    Span::styled(line.to_string(), Style::default().fg(app.theme.foreground)),
+                ]));
             }
 
             // Separator

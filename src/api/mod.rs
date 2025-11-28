@@ -151,6 +151,70 @@ impl ApiService {
         Ok(comment)
     }
 
+    /// Fetch a tree of comments starting from the given root IDs.
+    /// Returns a flattened list of CommentRows in DFS order.
+    pub fn fetch_comment_tree(
+        &self,
+        root_ids: Vec<u32>,
+    ) -> Result<Vec<crate::internal::models::CommentRow>> {
+        let mut rows = Vec::new();
+        // Limit total comments to prevent freezing on huge threads for now
+        let mut total_fetched = 0;
+        const MAX_COMMENTS: usize = 100;
+
+        for id in root_ids {
+            if total_fetched >= MAX_COMMENTS {
+                break;
+            }
+            self.fetch_comment_recursive(id, 0, None, &mut rows, &mut total_fetched)?;
+        }
+        Ok(rows)
+    }
+
+    fn fetch_comment_recursive(
+        &self,
+        id: u32,
+        depth: usize,
+        parent_id: Option<u32>,
+        rows: &mut Vec<crate::internal::models::CommentRow>,
+        total_fetched: &mut usize,
+    ) -> Result<()> {
+        if *total_fetched >= 100 {
+            return Ok(());
+        }
+
+        // Fetch the comment (uses cache internally)
+        match self.fetch_comment_content(id) {
+            Ok(comment) => {
+                *total_fetched += 1;
+                let kids = comment.kids.clone();
+
+                rows.push(crate::internal::models::CommentRow {
+                    comment,
+                    depth,
+                    expanded: true,
+                    parent_id,
+                });
+
+                if let Some(kids) = kids {
+                    for kid_id in kids {
+                        self.fetch_comment_recursive(
+                            kid_id,
+                            depth + 1,
+                            Some(id),
+                            rows,
+                            total_fetched,
+                        )?;
+                    }
+                }
+            }
+            Err(_) => {
+                // If a comment fails to load, just skip it and its children
+            }
+        }
+        Ok(())
+    }
+
     pub fn fetch_article_content(&self, url: &str) -> Result<Article> {
         // Check cache first
         if let Some(article) = self.article_cache.get(&url.to_string()) {

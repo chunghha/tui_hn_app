@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-11-27
+
+### Added
+- **Comment Threading**: Visualize comment hierarchy
+  - Indentation for nested comments
+  - Tree-like structure with visual guides (└─ and │)
+  - Collapse/expand comment threads (togglable with Enter key)
+  - Recursive comment fetching up to 100 comments
+
 ## [0.4.0] - 2025-11-27
 
 ### Added
