@@ -49,6 +49,12 @@ src/
   - Domain/source extraction (e.g., "github.com")
   - Two-line layout for better readability
   - Relative age indicators (e.g., "2h ago", "3d ago")
+  - Bookmark indicators (★) for saved stories
+- **Bookmarks/Favorites system** (v0.5.0)
+  - Save stories for later reading with `b` key
+  - View all bookmarks with `B` key
+  - Persistent storage in `~/.config/tui-hn-app/bookmarks.json`
+  - Import/export functionality
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments
@@ -132,6 +138,8 @@ If you prefer direct cargo commands:
 | `C` | Clear search filter |
 | `m` | Load more stories (next 20) |
 | `A` | Load all remaining stories |
+| `b` | Toggle bookmark on selected story |
+| `B` | View bookmarked stories |
 | `t` | Cycle through themes |
 | `g` | Toggle auto-switch dark to light |
 | `Esc` / `q` | Go back / Quit |

@@ -39,10 +39,9 @@ pub fn parse_article_html(html: &str) -> Vec<ArticleElement> {
             "pre" => {
                 // Check for code inside pre
                 let code_selector = Selector::parse("code").unwrap();
-                let code_text = if let Some(code_elem) = element.select(&code_selector).next() {
-                    code_elem.text().collect::<Vec<_>>().join("")
-                } else {
-                    element.text().collect::<Vec<_>>().join("")
+                let code_text = match element.select(&code_selector).next() {
+                    Some(code_elem) => code_elem.text().collect::<Vec<_>>().join(""),
+                    None => element.text().collect::<Vec<_>>().join(""),
                 };
 
                 // Try to find language class
@@ -140,11 +139,12 @@ mod tests {
         "#;
         let elements = parse_article_html(html);
         assert_eq!(elements.len(), 1);
-        if let ArticleElement::CodeBlock { lang, code } = &elements[0] {
-            assert_eq!(lang.as_deref(), Some("rust"));
-            assert_eq!(code, "fn main() {}");
-        } else {
-            panic!("Expected CodeBlock");
+        match &elements[0] {
+            ArticleElement::CodeBlock { lang, code } => {
+                assert_eq!(lang.as_deref(), Some("rust"));
+                assert_eq!(code, "fn main() {}");
+            }
+            _ => panic!("Expected CodeBlock"),
         }
     }
 }

@@ -38,28 +38,30 @@ use regex::Regex;
 pub fn toggle_dark_light(name: &str, runtime_is_dark: Option<bool>) -> String {
     // Regex: case-insensitive, match whole word dark or light
     let re = Regex::new(r"(?i)\b(dark|light)\b").expect("regex compiles");
-    if let Some(mat) = re.find(name) {
-        let matched = mat.as_str();
-        let replacement_base = if matched.eq_ignore_ascii_case("dark") {
-            "Light"
-        } else {
-            "Dark"
-        };
-        let replacement = preserve_case(matched, replacement_base);
-        // Build output replacing only the first occurrence
-        let mut out = String::with_capacity(name.len() + 6);
-        out.push_str(&name[..mat.start()]);
-        out.push_str(&replacement);
-        out.push_str(&name[mat.end()..]);
-        out
-    } else {
-        // Append based on runtime hint; default to Light
-        let to_append = match runtime_is_dark {
-            Some(true) => " Light",
-            Some(false) => " Dark",
-            None => " Light",
-        };
-        format!("{}{}", name, to_append)
+    match re.find(name) {
+        Some(mat) => {
+            let matched = mat.as_str();
+            let replacement_base = match matched.to_ascii_lowercase().as_str() {
+                "dark" => "Light",
+                _ => "Dark",
+            };
+            let replacement = preserve_case(matched, replacement_base);
+            // Build output replacing only the first occurrence
+            let mut out = String::with_capacity(name.len() + 6);
+            out.push_str(&name[..mat.start()]);
+            out.push_str(&replacement);
+            out.push_str(&name[mat.end()..]);
+            out
+        }
+        None => {
+            // Append based on runtime hint; default to Light
+            let to_append = match runtime_is_dark {
+                Some(true) => " Light",
+                Some(false) => " Dark",
+                None => " Light",
+            };
+            format!("{}{}", name, to_append)
+        }
     }
 }
 
@@ -70,27 +72,27 @@ pub fn toggle_dark_light(name: &str, runtime_is_dark: Option<bool>) -> String {
 /// - Otherwise, capitalizes the first grapheme of `replacement` (best-effort).
 #[allow(dead_code)]
 fn preserve_case(orig: &str, replacement: &str) -> String {
-    if orig.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
-        && orig.chars().any(|c| c.is_uppercase())
-        && !orig.chars().any(|c| c.is_lowercase())
-    {
-        // ALL UPPER (non-alpha chars allowed, but we require at least one uppercase
-        replacement.to_uppercase()
-    } else if orig.chars().all(|c| !c.is_alphabetic() || c.is_lowercase())
-        && orig.chars().any(|c| c.is_lowercase())
-        && !orig.chars().any(|c| c.is_uppercase())
-    {
+    let all_alpha_upper = orig.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+    let any_upper = orig.chars().any(|c| c.is_uppercase());
+    let any_lower = orig.chars().any(|c| c.is_lowercase());
+    let all_alpha_lower = orig.chars().all(|c| !c.is_alphabetic() || c.is_lowercase());
+
+    match (all_alpha_upper, any_upper, any_lower, all_alpha_lower) {
+        // ALL UPPER (non-alpha chars allowed, but we require at least one uppercase)
+        (true, true, false, _) => replacement.to_uppercase(),
         // all lower
-        replacement.to_lowercase()
-    } else {
+        (_, false, true, true) => replacement.to_lowercase(),
         // Capitalize first character of replacement (best-effort)
-        let mut chars = replacement.chars();
-        if let Some(first) = chars.next() {
-            let first_up = first.to_uppercase().collect::<String>();
-            let rest = chars.as_str();
-            format!("{first_up}{rest}")
-        } else {
-            replacement.to_string()
+        _ => {
+            let mut chars = replacement.chars();
+            match chars.next() {
+                Some(first) => {
+                    let first_up = first.to_uppercase().collect::<String>();
+                    let rest = chars.as_str();
+                    format!("{first_up}{rest}")
+                }
+                None => replacement.to_string(),
+            }
         }
     }
 }

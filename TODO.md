@@ -1,6 +1,6 @@
 # TUI Hacker News App - Development Roadmap
 
-> **Current Version**: 0.3.3 (in development)  
+> **Current Version**: 0.5.0  
 > See [Version Planning](#version-planning) section below for the full roadmap.
 
 ## ✅ Completed Items
@@ -63,9 +63,12 @@
   - User karma/reputation (deferred)
 
 ### Navigation & Interaction
-- [ ] **Bookmarks/Favorites**: Save stories for later reading
-  - Local storage of bookmarked story IDs
-  - Dedicated view for bookmarks
+- [x] **Bookmarks/Favorites**: Save stories for later reading
+  - ✅ Implemented in v0.5.0
+  - Local storage of bookmarked story IDs with timestamps
+  - Dedicated view for bookmarks (press `B`)
+  - Toggle bookmark with `b` key
+  - Bookmark indicators (★) in story list
   - Import/export bookmarks
 
 - [ ] **History**: Track recently viewed stories
@@ -140,18 +143,41 @@ Based on current codebase maturity, I recommend prioritizing:
 
 ## Version Planning
 
-### v0.3.0 (Next Minor Release)
-- Comment pagination
-- Help screen (`?` key)
-- Basic caching
-- Improved error messages
+### ✅ Completed Versions
 
-### v0.4.0 (Future)
-- Comment threading/indentation
-- Bookmarks/favorites
-- History tracking
+#### v0.3.0 - v0.3.3 (Completed)
+- ✅ Comment pagination (v0.3.0)
+- ✅ Help screen (`?` key) (v0.3.2)
+- ✅ In-memory caching with TTL (v0.3.3)
+- ✅ Improved error messages (v0.3.x)
+- ✅ Smooth line-by-line comment scrolling (v0.3.3)
 
-### v1.0.0 (Stable)
+#### v0.4.0 - v0.4.2 (Completed)
+- ✅ Better Article Rendering with rich text (v0.4.0)
+- ✅ Comment Threading with visual hierarchy (v0.4.1)
+- ✅ Story Metadata Display with domain/age (v0.4.2)
+
+#### v0.5.0 (Completed - 2025-11-28)
+- ✅ Bookmarks/Favorites System
+  - Local storage of bookmarked story IDs with timestamps
+  - Dedicated view for bookmarks (press `B`)
+  - Import/export bookmarks
+  - Toggle bookmark with `b` key
+  - Bookmark indicators (★) in story list
+
+### 🚀 v0.5.x Series (Future)
+
+#### v0.5.1 - History Tracking (Optional)
+- Track recently viewed stories
+- Clear history option
+
+### 🎯 v0.6.0+ (Future)
+- Search enhancements (comments, regex)
+- Sorting options (by score, time, comments)
+- Key binding customization
+- UI customization options
+
+### 🏁 v1.0.0 (Stable)
 - Complete feature parity with web interface
 - Comprehensive test coverage
 - Performance optimizations

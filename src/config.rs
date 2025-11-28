@@ -104,13 +104,14 @@ impl AppConfig {
                 .enumerate_arrays(true);
 
             match ron::ser::to_string_pretty(self, pretty) {
-                Ok(content) => {
-                    if let Err(e) = fs::write(&path, content) {
-                        tracing::error!("Failed to write config to {}: {}", path.display(), e);
-                    } else {
+                Ok(content) => match fs::write(&path, content) {
+                    Ok(_) => {
                         tracing::info!("Saved config to {}", path.display());
                     }
-                }
+                    Err(e) => {
+                        tracing::error!("Failed to write config to {}: {}", path.display(), e);
+                    }
+                },
                 Err(e) => {
                     tracing::error!("Failed to serialize config: {}", e);
                 }
@@ -151,10 +152,13 @@ impl AppConfig {
         );
         replace_str(&mut new_content, "ghost_term_name", &self.ghost_term_name);
 
-        if let Err(e) = fs::write(&path, new_content) {
-            tracing::error!("Failed to update config at {}: {}", path.display(), e);
-        } else {
-            tracing::info!("Updated config at {} (preserving comments)", path.display());
+        match fs::write(&path, new_content) {
+            Ok(_) => {
+                tracing::info!("Updated config at {} (preserving comments)", path.display());
+            }
+            Err(e) => {
+                tracing::error!("Failed to update config at {}: {}", path.display(), e);
+            }
         }
     }
 }

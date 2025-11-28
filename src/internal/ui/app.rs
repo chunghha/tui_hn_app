@@ -1,3 +1,4 @@
+#![allow(clippy::single_match)]
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,6 +22,7 @@ pub enum ViewMode {
     List,
     StoryDetail,
     Article,
+    Bookmarks,
 }
 
 /// Input modes for the UI.
@@ -59,6 +61,14 @@ pub enum Action {
     SwitchTheme,
     ClearNotification,
     Error(String),
+    #[allow(dead_code)]
+    ToggleBookmark,
+    #[allow(dead_code)]
+    ViewBookmarks,
+    #[allow(dead_code)]
+    ExportBookmarks,
+    #[allow(dead_code)]
+    ImportBookmarks,
 }
 
 /// Main application state.
@@ -101,6 +111,7 @@ pub struct App {
     pub config: AppConfig,
     pub action_tx: UnboundedSender<Action>,
     pub action_rx: UnboundedReceiver<Action>,
+    pub bookmarks: crate::internal::bookmarks::Bookmarks,
 }
 
 impl App {
@@ -140,22 +151,32 @@ impl App {
             Self::select_theme_from_config(&config, &available_themes, &terminal_mode, &term_env);
 
         // Log which theme was finally selected (index and variant) so startup behavior is traceable.
-        if !available_themes.is_empty() {
-            let (filename, mode) = &available_themes[current_theme_index];
-            let stem = Path::new(filename)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown");
-            tracing::info!(
-                "Selected theme index {} -> {} ({}) from '{}'",
-                current_theme_index,
-                stem,
-                mode,
-                filename
-            );
-        } else {
-            tracing::info!("No available themes found; using default TuiTheme");
+        match available_themes.get(current_theme_index) {
+            Some((filename, mode)) => {
+                let stem = Path::new(filename)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                tracing::info!(
+                    "Selected theme index {} -> {} ({}) from '{}'",
+                    current_theme_index,
+                    stem,
+                    mode,
+                    filename
+                );
+            }
+            None => {
+                tracing::info!("No available themes found; using default TuiTheme");
+            }
         }
+
+        let bookmarks = match crate::internal::bookmarks::Bookmarks::load_or_create() {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("Failed to load bookmarks: {}", e);
+                crate::internal::bookmarks::Bookmarks::new()
+            }
+        };
 
         Self {
             running: true,
@@ -193,6 +214,7 @@ impl App {
             config,
             action_tx,
             action_rx,
+            bookmarks,
         }
     }
 
@@ -204,7 +226,12 @@ impl App {
             && let Ok(bg_val) = bg.parse::<u8>()
         {
             // Background values 0-7 are typically dark, 8-15 are light
-            return if bg_val < 8 { "dark" } else { "light" }.to_string();
+            let mode = match bg_val {
+                0..=7 => "dark",
+                8..=15 => "light",
+                _ => "unknown",
+            };
+            return mode.to_string();
         }
 
         // Check TERM_PROGRAM for known terminals
@@ -251,26 +278,28 @@ impl App {
                 continue;
             }
 
-            if cand.is_file() {
-                if let Some(ext) = cand.extension().and_then(|s| s.to_str())
-                    && ext.eq_ignore_ascii_case("json")
-                    && let Some(filename) = cand.to_str()
-                {
-                    themes.push((filename.to_string(), "dark".to_string()));
-                    themes.push((filename.to_string(), "light".to_string()));
-                }
-            } else if cand.is_dir()
-                && let Ok(entries) = std::fs::read_dir(&cand)
-            {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|s| s.to_str()) == Some("json")
-                        && let Some(filename) = path.to_str()
+            match (cand.is_file(), std::fs::read_dir(&cand)) {
+                (true, _) => {
+                    if let Some(ext) = cand.extension().and_then(|s| s.to_str())
+                        && ext.eq_ignore_ascii_case("json")
+                        && let Some(filename) = cand.to_str()
                     {
                         themes.push((filename.to_string(), "dark".to_string()));
                         themes.push((filename.to_string(), "light".to_string()));
                     }
                 }
+                (false, Ok(entries)) => {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().and_then(|s| s.to_str()) == Some("json")
+                            && let Some(filename) = path.to_str()
+                        {
+                            themes.push((filename.to_string(), "dark".to_string()));
+                            themes.push((filename.to_string(), "light".to_string()));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -278,11 +307,12 @@ impl App {
         let mut seen = std::collections::HashSet::new();
         themes.retain(|(p, mode)| {
             let key = format!("{}:{}", p, mode);
-            if seen.contains(&key) {
-                false
-            } else {
-                seen.insert(key);
-                true
+            match seen.contains(&key) {
+                true => false,
+                false => {
+                    seen.insert(key);
+                    true
+                }
             }
         });
 
@@ -311,30 +341,37 @@ impl App {
         {
             requested_mode = Some(last.to_lowercase());
             let tokens: Vec<&str> = theme_name_raw.split_whitespace().collect();
-            if tokens.len() >= 2 {
-                base_name = tokens[..tokens.len() - 1].join(" ");
-            } else {
-                base_name = String::new();
-            }
+            base_name = match tokens.split_last() {
+                Some((_last, rest)) if !rest.is_empty() => rest.join(" "),
+                _ => String::new(),
+            };
 
             // Respect ghost terminal name from config; use the provided `term_env` value
             // passed in by the caller rather than reading the environment here.
             let ghost_name = config.ghost_term_name.trim();
-            if term_env.eq_ignore_ascii_case(ghost_name) {
-                tracing::info!(
-                    "TERM='{}' detected; honoring requested theme variant '{}'",
-                    term_env,
-                    requested_mode.as_deref().unwrap_or("unknown")
-                );
-            } else if requested_mode.as_deref() == Some("dark") && config.auto_switch_dark_to_light
-            {
-                tracing::info!(
-                    "Auto-switching requested dark variant to light because TERM!='{}' and auto_switch_dark_to_light is enabled",
-                    ghost_name
-                );
-                requested_mode = Some("light".to_string());
-            } else {
-                tracing::info!("Requested theme variant retained: {:?}", requested_mode);
+            match term_env.eq_ignore_ascii_case(ghost_name) {
+                true => {
+                    tracing::info!(
+                        "TERM='{}' detected; honoring requested theme variant '{}'",
+                        term_env,
+                        requested_mode.as_deref().unwrap_or("unknown")
+                    );
+                }
+                false => match (
+                    requested_mode.as_deref() == Some("dark"),
+                    config.auto_switch_dark_to_light,
+                ) {
+                    (true, true) => {
+                        tracing::info!(
+                            "Auto-switching requested dark variant to light because TERM!='{}' and auto_switch_dark_to_light is enabled",
+                            ghost_name
+                        );
+                        requested_mode = Some("light".to_string());
+                    }
+                    _ => {
+                        tracing::info!("Requested theme variant retained: {:?}", requested_mode);
+                    }
+                },
             }
         }
 
@@ -349,16 +386,22 @@ impl App {
                 if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
                     && stem.eq_ignore_ascii_case(&base_lower)
                 {
-                    if let Some(req) = &requested_mode {
-                        if mode.eq_ignore_ascii_case(req) {
+                    match (requested_mode.as_deref(), mode.as_str()) {
+                        (Some(_), _)
+                            if mode.eq_ignore_ascii_case(requested_mode.as_deref().unwrap()) =>
+                        {
                             matched_idx = Some(i);
                             break;
                         }
-                    } else if mode == terminal_mode {
-                        matched_idx = Some(i);
-                        break;
-                    } else if matched_idx.is_none() {
-                        matched_idx = Some(i);
+                        (None, _) if mode == terminal_mode => {
+                            matched_idx = Some(i);
+                            break;
+                        }
+                        _ => {
+                            if matched_idx.is_none() {
+                                matched_idx = Some(i);
+                            }
+                        }
                     }
                 }
             }
@@ -369,56 +412,76 @@ impl App {
                 if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
                     && fullname_lower.starts_with(&stem.to_lowercase())
                 {
-                    if let Some(req) = &requested_mode {
-                        if mode.eq_ignore_ascii_case(req) {
+                    match (requested_mode.as_deref(), mode.as_str()) {
+                        (Some(_), _)
+                            if mode.eq_ignore_ascii_case(requested_mode.as_deref().unwrap()) =>
+                        {
                             matched_idx = Some(i);
                             break;
                         }
-                    } else if mode == terminal_mode {
-                        matched_idx = Some(i);
-                        break;
-                    } else if matched_idx.is_none() {
-                        matched_idx = Some(i);
+                        (None, _) if mode == terminal_mode => {
+                            matched_idx = Some(i);
+                            break;
+                        }
+                        _ => {
+                            if matched_idx.is_none() {
+                                matched_idx = Some(i);
+                            }
+                        }
                     }
                 }
             }
         }
 
-        if let Some(idx) = matched_idx {
-            let (filename, mode) = &available_themes[idx];
-            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-            (theme, idx)
-        } else if let Some(req) = requested_mode {
-            if let Some(idx) = available_themes
-                .iter()
-                .position(|(_, mode)| mode.eq_ignore_ascii_case(&req))
-            {
+        match matched_idx {
+            Some(idx) => {
                 let (filename, mode) = &available_themes[idx];
                 let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
                 (theme, idx)
-            } else if let Some(idx) = available_themes
-                .iter()
-                .position(|(_, mode)| mode == terminal_mode)
-            {
-                let (filename, mode) = &available_themes[idx];
-                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                (theme, idx)
-            } else {
-                let (filename, mode) = &available_themes[0];
-                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                (theme, 0)
             }
-        } else if let Some(idx) = available_themes
-            .iter()
-            .position(|(_, mode)| mode == terminal_mode)
-        {
-            let (filename, mode) = &available_themes[idx];
-            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-            (theme, idx)
-        } else {
-            let (filename, mode) = &available_themes[0];
-            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-            (theme, 0)
+            None => match requested_mode.as_deref() {
+                Some(req) => {
+                    match (
+                        available_themes
+                            .iter()
+                            .position(|(_, mode)| mode.eq_ignore_ascii_case(req)),
+                        available_themes
+                            .iter()
+                            .position(|(_, mode)| mode == terminal_mode),
+                    ) {
+                        (Some(idx), _) => {
+                            let (filename, mode) = &available_themes[idx];
+                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                            (theme, idx)
+                        }
+                        (None, Some(idx)) => {
+                            let (filename, mode) = &available_themes[idx];
+                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                            (theme, idx)
+                        }
+                        (None, None) => {
+                            let (filename, mode) = &available_themes[0];
+                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                            (theme, 0)
+                        }
+                    }
+                }
+                None => match available_themes
+                    .iter()
+                    .position(|(_, mode)| mode == terminal_mode)
+                {
+                    Some(idx) => {
+                        let (filename, mode) = &available_themes[idx];
+                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                        (theme, idx)
+                    }
+                    None => {
+                        let (filename, mode) = &available_themes[0];
+                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
+                        (theme, 0)
+                    }
+                },
+            },
         }
     }
 
@@ -433,13 +496,16 @@ impl App {
         loop {
             // Update spinner animation every 100ms
             let now = tokio::time::Instant::now();
-            if let Some(last_update) = self.last_spinner_update {
-                if now.duration_since(last_update).as_millis() >= 100 {
-                    self.spinner_state = self.spinner_state.wrapping_add(1);
+            match self.last_spinner_update {
+                Some(last_update) => {
+                    if now.duration_since(last_update).as_millis() >= 100 {
+                        self.spinner_state = self.spinner_state.wrapping_add(1);
+                        self.last_spinner_update = Some(now);
+                    }
+                }
+                None => {
                     self.last_spinner_update = Some(now);
                 }
-            } else {
-                self.last_spinner_update = Some(now);
             }
 
             tui.draw(|f| self.ui(f))?;
@@ -495,35 +561,37 @@ impl App {
             KeyCode::Char('?') => {
                 let _ = self.action_tx.send(Action::ToggleHelp);
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
-                if self.show_help {
+            KeyCode::Esc | KeyCode::Char('q') => match (self.show_help, self.view_mode) {
+                (true, _) => {
                     let _ = self.action_tx.send(Action::ToggleHelp);
-                } else {
-                    // Only quit if we're in list view or detail view (not search mode)
-                    match self.view_mode {
-                        ViewMode::List => {
-                            let _ = self.action_tx.send(Action::Quit);
-                        }
-                        ViewMode::StoryDetail | ViewMode::Article => {
-                            let _ = self.action_tx.send(Action::Back);
-                        }
-                    }
                 }
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.view_mode == ViewMode::Article {
+                (false, ViewMode::List) => {
+                    let _ = self.action_tx.send(Action::Quit);
+                }
+                (false, ViewMode::StoryDetail) | (false, ViewMode::Article) => {
+                    let _ = self.action_tx.send(Action::Back);
+                }
+                // When in Bookmarks view, Esc/q should go back to the List view
+                (false, ViewMode::Bookmarks) => {
+                    let _ = self.action_tx.send(Action::Back);
+                }
+            },
+            KeyCode::Char('j') | KeyCode::Down => match self.view_mode {
+                ViewMode::Article => {
                     let _ = self.action_tx.send(Action::ScrollArticleDown);
-                } else {
+                }
+                _ => {
                     let _ = self.action_tx.send(Action::NavigateDown);
                 }
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                if self.view_mode == ViewMode::Article {
+            },
+            KeyCode::Char('k') | KeyCode::Up => match self.view_mode {
+                ViewMode::Article => {
                     let _ = self.action_tx.send(Action::ScrollArticleUp);
-                } else {
+                }
+                _ => {
                     let _ = self.action_tx.send(Action::NavigateUp);
                 }
-            }
+            },
             KeyCode::Enter => {
                 let _ = self.action_tx.send(Action::Enter);
             }
@@ -558,6 +626,12 @@ impl App {
             KeyCode::Char('t') => {
                 let _ = self.action_tx.send(Action::SwitchTheme);
             }
+            KeyCode::Char('b') => {
+                let _ = self.action_tx.send(Action::ToggleBookmark);
+            }
+            KeyCode::Char('B') => {
+                let _ = self.action_tx.send(Action::ViewBookmarks);
+            }
             // Toggle auto_switch_dark_to_light at runtime and persist to config.ron.
             // Pressing 'g' flips the flag, saves config, and shows a short notification.
             KeyCode::Char('g') => {
@@ -566,10 +640,9 @@ impl App {
                 // Attempt to save the config to disk; AppConfig::save preserves comments.
                 self.config.save();
 
-                let status = if self.config.auto_switch_dark_to_light {
-                    "enabled"
-                } else {
-                    "disabled"
+                let status = match self.config.auto_switch_dark_to_light {
+                    true => "enabled",
+                    false => "disabled",
                 };
 
                 // Notify user briefly
@@ -627,19 +700,25 @@ impl App {
         match action {
             Action::Quit => self.running = false,
             Action::NavigateUp => {
-                if self.view_mode == ViewMode::StoryDetail {
-                    // Scroll up in comments
-                    self.comments_scroll = self.comments_scroll.saturating_sub(1);
-                } else {
-                    self.select_prev();
+                match self.view_mode {
+                    ViewMode::StoryDetail => {
+                        // Scroll up in comments
+                        self.comments_scroll = self.comments_scroll.saturating_sub(1);
+                    }
+                    _ => {
+                        self.select_prev();
+                    }
                 }
             }
             Action::NavigateDown => {
-                if self.view_mode == ViewMode::StoryDetail {
-                    // Scroll down in comments
-                    self.comments_scroll = self.comments_scroll.saturating_add(1);
-                } else {
-                    self.select_next();
+                match self.view_mode {
+                    ViewMode::StoryDetail => {
+                        // Scroll down in comments
+                        self.comments_scroll = self.comments_scroll.saturating_add(1);
+                    }
+                    _ => {
+                        self.select_next();
+                    }
                 }
             }
             Action::Enter => {
@@ -648,21 +727,22 @@ impl App {
                     // back to the original story using the same filter logic used when
                     // rendering the list. This ensures Enter selects the story shown
                     // on that row even when a filter/search is active.
-                    let displayed: Vec<_> = if self.search_query.is_empty() {
-                        self.stories.iter().enumerate().collect()
-                    } else {
-                        let query = self.search_query.to_lowercase();
-                        self.stories
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, story)| {
-                                story
-                                    .title
-                                    .as_ref()
-                                    .map(|t| t.to_lowercase().contains(&query))
-                                    .unwrap_or(false)
-                            })
-                            .collect()
+                    let displayed: Vec<_> = match self.search_query.is_empty() {
+                        true => self.stories.iter().enumerate().collect(),
+                        false => {
+                            let query = self.search_query.to_lowercase();
+                            self.stories
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, story)| {
+                                    story
+                                        .title
+                                        .as_ref()
+                                        .map(|t| t.to_lowercase().contains(&query))
+                                        .unwrap_or(false)
+                                })
+                                .collect()
+                        }
                     };
 
                     if let Some((_, s)) = displayed.get(index).cloned() {
@@ -685,35 +765,40 @@ impl App {
                 self.comments_scroll = 0;
             }
             Action::OpenBrowser => {
-                if let Some(story) = &self.selected_story {
-                    if let Some(url) = &story.url {
-                        let _ = open::that(url);
+                match (&self.selected_story, self.story_list_state.selected()) {
+                    (Some(story), _) => {
+                        if let Some(url) = &story.url {
+                            let _ = open::that(url);
+                        }
                     }
-                } else if let Some(index) = self.story_list_state.selected() {
-                    // Map selected displayed index back to original story so OpenBrowser
-                    // opens the URL for the story visible on that row when filtered.
-                    let displayed: Vec<_> = if self.search_query.is_empty() {
-                        self.stories.iter().enumerate().collect()
-                    } else {
-                        let query = self.search_query.to_lowercase();
-                        self.stories
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, story)| {
-                                story
-                                    .title
-                                    .as_ref()
-                                    .map(|t| t.to_lowercase().contains(&query))
-                                    .unwrap_or(false)
-                            })
-                            .collect()
-                    };
+                    (None, Some(index)) => {
+                        // Map selected displayed index back to original story so OpenBrowser
+                        // opens the URL for the story visible on that row when filtered.
+                        let displayed: Vec<_> = match self.search_query.is_empty() {
+                            true => self.stories.iter().enumerate().collect(),
+                            false => {
+                                let query = self.search_query.to_lowercase();
+                                self.stories
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, story)| {
+                                        story
+                                            .title
+                                            .as_ref()
+                                            .map(|t| t.to_lowercase().contains(&query))
+                                            .unwrap_or(false)
+                                    })
+                                    .collect()
+                            }
+                        };
 
-                    if let Some((_, story)) = displayed.get(index).cloned()
-                        && let Some(url) = &story.url
-                    {
-                        let _ = open::that(url);
+                        if let Some((_, story)) = displayed.get(index).cloned()
+                            && let Some(url) = &story.url
+                        {
+                            let _ = open::that(url);
+                        }
                     }
+                    _ => {}
                 }
             }
             Action::LoadStories(list_type) => {
@@ -728,22 +813,25 @@ impl App {
                 let tx = self.action_tx.clone();
 
                 tokio::spawn(async move {
-                    if let Ok(ids) = api.fetch_story_ids(list_type) {
-                        // Send all IDs first
-                        let all_ids = ids.clone();
-                        let _ = tx.send(Action::StoryIdsLoaded(all_ids));
+                    match api.fetch_story_ids(list_type) {
+                        Ok(ids) => {
+                            // Send all IDs first
+                            let all_ids = ids.clone();
+                            let _ = tx.send(Action::StoryIdsLoaded(all_ids));
 
-                        // Fetch first 20 stories
-                        let ids_to_fetch = ids.iter().take(20).copied().collect::<Vec<_>>();
-                        let mut stories = Vec::new();
-                        for id in &ids_to_fetch {
-                            if let Ok(story) = api.fetch_story_content(*id) {
-                                stories.push(story);
+                            // Fetch first 20 stories
+                            let ids_to_fetch = ids.iter().take(20).copied().collect::<Vec<_>>();
+                            let mut stories = Vec::new();
+                            for id in &ids_to_fetch {
+                                if let Ok(story) = api.fetch_story_content(*id) {
+                                    stories.push(story);
+                                }
                             }
+                            let _ = tx.send(Action::StoriesLoaded(stories));
                         }
-                        let _ = tx.send(Action::StoriesLoaded(stories));
-                    } else {
-                        let _ = tx.send(Action::Error("Failed to fetch stories".to_string()));
+                        Err(_) => {
+                            let _ = tx.send(Action::Error("Failed to fetch stories".to_string()));
+                        }
                     }
                 });
             }
@@ -761,113 +849,116 @@ impl App {
                 self.stories.extend(stories);
                 self.loading = false;
                 self.story_load_progress = None;
-                if !self.stories.is_empty() && self.story_list_state.selected().is_none() {
-                    self.story_list_state.select(Some(0));
+                if let (true, None) = (!self.stories.is_empty(), self.story_list_state.selected()) {
+                    self.story_list_state.select(Some(0))
                 }
             }
-            Action::LoadMoreStories => {
-                if self.loading || self.story_ids.is_empty() {
-                    return;
-                }
+            Action::LoadMoreStories => match (self.loading, self.story_ids.is_empty()) {
+                (true, _) | (_, true) => {}
+                _ => match self.loaded_count >= self.story_ids.len() {
+                    true => {
+                        let msg = format!(
+                            "{}/{} stories already loaded",
+                            self.loaded_count,
+                            self.story_ids.len()
+                        );
+                        self.notification_message = Some(msg);
+                        self.notification_timer = Some(tokio::time::Instant::now());
 
-                // Check if all stories are already loaded
-                if self.loaded_count >= self.story_ids.len() {
-                    let msg = format!(
-                        "{}/{} stories already loaded",
-                        self.loaded_count,
-                        self.story_ids.len()
-                    );
-                    self.notification_message = Some(msg);
-                    self.notification_timer = Some(tokio::time::Instant::now());
+                        // Schedule notification clear
+                        let tx = self.action_tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                            let _ = tx.send(Action::ClearNotification);
+                        });
+                    }
+                    false => {
+                        self.loading = true;
+                        let api = self.api_service.clone();
+                        let tx = self.action_tx.clone();
+                        let ids_to_fetch = self
+                            .story_ids
+                            .iter()
+                            .skip(self.loaded_count)
+                            .take(20)
+                            .copied()
+                            .collect::<Vec<_>>();
 
-                    // Schedule notification clear
-                    let tx = self.action_tx.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        let _ = tx.send(Action::ClearNotification);
-                    });
-                    return;
-                }
+                        tokio::spawn(async move {
+                            let mut stories = Vec::new();
+                            for id in &ids_to_fetch {
+                                if let Ok(story) = api.fetch_story_content(*id) {
+                                    stories.push(story);
+                                }
+                            }
+                            let _ = tx.send(Action::StoriesLoaded(stories));
+                        });
+                    }
+                },
+            },
+            Action::LoadAllStories => match (
+                self.loading,
+                self.story_ids.is_empty(),
+                self.story_load_progress.is_some(),
+            ) {
+                (true, _, _) | (_, true, _) | (_, _, true) => {}
+                _ => {
+                    // Check if all stories are already loaded
+                    match self.loaded_count >= self.story_ids.len() {
+                        true => {
+                            let msg = format!(
+                                "{}/{} stories already loaded",
+                                self.loaded_count,
+                                self.story_ids.len()
+                            );
+                            self.notification_message = Some(msg);
+                            self.notification_timer = Some(tokio::time::Instant::now());
 
-                self.loading = true;
-                let api = self.api_service.clone();
-                let tx = self.action_tx.clone();
-                let start_idx = self.loaded_count;
-                let ids_to_fetch: Vec<_> = self
-                    .story_ids
-                    .iter()
-                    .skip(start_idx)
-                    .take(20)
-                    .copied()
-                    .collect();
+                            // Schedule notification clear
+                            let tx = self.action_tx.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                                let _ = tx.send(Action::ClearNotification);
+                            });
+                        }
+                        false => {
+                            self.loading = true;
+                            let api = self.api_service.clone();
+                            let tx = self.action_tx.clone();
+                            let start_idx = self.loaded_count;
 
-                if ids_to_fetch.is_empty() {
-                    self.loading = false;
-                    return;
-                }
+                            // Load ALL remaining stories
+                            let ids_to_fetch: Vec<_> =
+                                self.story_ids.iter().skip(start_idx).copied().collect();
 
-                tokio::spawn(async move {
-                    let mut stories = Vec::new();
-                    for id in ids_to_fetch {
-                        if let Ok(story) = api.fetch_story_content(id) {
-                            stories.push(story);
+                            match ids_to_fetch.is_empty() {
+                                true => {
+                                    self.loading = false;
+                                }
+                                false => {
+                                    self.story_load_progress = Some((0, ids_to_fetch.len()));
+
+                                    tokio::spawn(async move {
+                                        let mut stories = Vec::new();
+                                        for (i, id) in ids_to_fetch.iter().enumerate() {
+                                            if let Ok(story) = api.fetch_story_content(*id) {
+                                                stories.push(story);
+                                            }
+                                            let _ = tx.send(Action::StoryLoadingProgress(i + 1));
+                                            // Add a small delay to avoid hitting API rate limits
+                                            tokio::time::sleep(std::time::Duration::from_millis(
+                                                20,
+                                            ))
+                                            .await;
+                                        }
+                                        let _ = tx.send(Action::StoriesLoaded(stories));
+                                    });
+                                }
+                            }
                         }
                     }
-                    let _ = tx.send(Action::StoriesLoaded(stories));
-                });
-            }
-            Action::LoadAllStories => {
-                if self.loading || self.story_ids.is_empty() || self.story_load_progress.is_some() {
-                    return;
                 }
-
-                // Check if all stories are already loaded
-                if self.loaded_count >= self.story_ids.len() {
-                    let msg = format!(
-                        "{}/{} stories already loaded",
-                        self.loaded_count,
-                        self.story_ids.len()
-                    );
-                    self.notification_message = Some(msg);
-                    self.notification_timer = Some(tokio::time::Instant::now());
-
-                    // Schedule notification clear
-                    let tx = self.action_tx.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        let _ = tx.send(Action::ClearNotification);
-                    });
-                    return;
-                }
-
-                self.loading = true;
-                let api = self.api_service.clone();
-                let tx = self.action_tx.clone();
-                let start_idx = self.loaded_count;
-
-                // Load ALL remaining stories
-                let ids_to_fetch: Vec<_> = self.story_ids.iter().skip(start_idx).copied().collect();
-
-                if ids_to_fetch.is_empty() {
-                    self.loading = false;
-                    return;
-                }
-
-                self.story_load_progress = Some((0, ids_to_fetch.len()));
-
-                tokio::spawn(async move {
-                    let mut stories = Vec::new();
-                    for (i, id) in ids_to_fetch.iter().enumerate() {
-                        if let Ok(story) = api.fetch_story_content(*id) {
-                            stories.push(story);
-                        }
-                        let _ = tx.send(Action::StoryLoadingProgress(i + 1));
-                        // Add a small delay to avoid hitting API rate limits
-                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                    }
-                    let _ = tx.send(Action::StoriesLoaded(stories));
-                });
-            }
+            },
             Action::SelectStory(story, list_type) => {
                 // Propagate the category/list type when selecting a story so downstream
                 // operations (e.g., fetching details) have the context available.
@@ -898,38 +989,44 @@ impl App {
                     // Capture the list/category this selection came from for the response.
                     let list_for_request = self.current_list_type;
                     tokio::spawn(async move {
-                        if let Ok(content) = api_clone.fetch_article_content(&url) {
-                            let _ = tx_clone.send(Action::ArticleLoaded(
-                                list_for_request,
-                                story_id,
-                                content,
-                            ));
-                        } else {
-                            let _ =
-                                tx_clone.send(Action::Error("Failed to fetch article".to_string()));
+                        match api_clone.fetch_article_content(&url) {
+                            Ok(content) => {
+                                let _ = tx_clone.send(Action::ArticleLoaded(
+                                    list_for_request,
+                                    story_id,
+                                    content,
+                                ));
+                            }
+                            Err(_) => {
+                                let _ = tx_clone
+                                    .send(Action::Error("Failed to fetch article".to_string()));
+                            }
                         }
                     });
                 }
 
                 // Fetch comments in the background as before so they are available
                 // if the user switches to the comments view.
-                if let Some(kids) = story.kids {
-                    // Store all comment IDs for pagination
-                    self.comment_ids = kids.clone();
-                    self.loaded_comments_count = 0;
+                match story.kids {
+                    Some(kids) => {
+                        // Store all comment IDs for pagination
+                        self.comment_ids = kids.clone();
+                        self.loaded_comments_count = 0;
 
-                    let api_clone = api.clone();
-                    let tx_clone = tx.clone();
-                    tokio::spawn(async move {
-                        // Use fetch_comment_tree to get threaded comments
-                        if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids) {
-                            let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
-                        }
-                    });
-                } else {
-                    self.comment_ids.clear();
-                    self.loaded_comments_count = 0;
-                    self.comments_loading = false;
+                        let api_clone = api.clone();
+                        let tx_clone = tx.clone();
+                        tokio::spawn(async move {
+                            // Use fetch_comment_tree to get threaded comments
+                            if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids) {
+                                let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
+                            }
+                        });
+                    }
+                    None => {
+                        self.comment_ids.clear();
+                        self.loaded_comments_count = 0;
+                        self.comments_loading = false;
+                    }
                 }
             }
             Action::CommentsLoaded(comment_rows) => {
@@ -958,32 +1055,41 @@ impl App {
                 }
             }
             Action::ToggleArticleView => {
-                if self.view_mode == ViewMode::StoryDetail {
-                    self.view_mode = ViewMode::Article;
-                    // If we haven't loaded the article yet, start loading it
-                    if self.article_content.is_none()
-                        && !self.article_loading
-                        && let Some(story) = &self.selected_story
-                        && let Some(url) = &story.url
-                    {
-                        self.article_loading = true;
-                        let api = self.api_service.clone();
-                        let tx = self.action_tx.clone();
-                        let url = url.clone();
-                        let list_type = self.current_list_type;
-                        let story_id = story.id;
-                        tokio::spawn(async move {
-                            if let Ok(content) = api.fetch_article_content(&url) {
-                                let _ =
-                                    tx.send(Action::ArticleLoaded(list_type, story_id, content));
-                            } else {
-                                let _ =
-                                    tx.send(Action::Error("Failed to fetch article".to_string()));
-                            }
-                        });
+                match self.view_mode {
+                    ViewMode::StoryDetail => {
+                        self.view_mode = ViewMode::Article;
+                        // If we haven't loaded the article yet, start loading it
+                        if self.article_content.is_none()
+                            && !self.article_loading
+                            && let Some(story) = &self.selected_story
+                            && let Some(url) = &story.url
+                        {
+                            self.article_loading = true;
+                            let api = self.api_service.clone();
+                            let tx = self.action_tx.clone();
+                            let url = url.clone();
+                            let list_type = self.current_list_type;
+                            let story_id = story.id;
+                            tokio::spawn(async move {
+                                match api.fetch_article_content(&url) {
+                                    Ok(content) => {
+                                        let _ = tx.send(Action::ArticleLoaded(
+                                            list_type, story_id, content,
+                                        ));
+                                    }
+                                    Err(_) => {
+                                        let _ = tx.send(Action::Error(
+                                            "Failed to fetch article".to_string(),
+                                        ));
+                                    }
+                                }
+                            });
+                        }
                     }
-                } else if self.view_mode == ViewMode::Article {
-                    self.view_mode = ViewMode::StoryDetail;
+                    ViewMode::Article => {
+                        self.view_mode = ViewMode::StoryDetail;
+                    }
+                    _ => {}
                 }
             }
             Action::ToggleHelp => {
@@ -1026,49 +1132,231 @@ impl App {
                     .available_themes
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, (_p, mode))| {
-                        if mode.eq_ignore_ascii_case(&current_mode) {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    })
+                    .filter_map(
+                        |(i, (_p, mode))| match mode.eq_ignore_ascii_case(&current_mode) {
+                            true => Some(i),
+                            false => None,
+                        },
+                    )
                     .collect();
 
-                if group.len() > 1 {
-                    // Cycle within the same-mode group (e.g., all dark themes)
-                    let pos = group
-                        .iter()
-                        .position(|&idx| idx == self.current_theme_index)
-                        .unwrap_or(0);
-                    let next_pos = (pos + 1) % group.len();
-                    let new_idx = group[next_pos];
-                    self.current_theme_index = new_idx;
-                    let (filename, mode) = &self.available_themes[new_idx];
-                    if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
-                        self.theme = new_theme;
+                match group.len() {
+                    n if n > 1 => {
+                        // Cycle within the same-mode group (e.g., all dark themes)
+                        let pos = group
+                            .iter()
+                            .position(|&idx| idx == self.current_theme_index)
+                            .unwrap_or(0);
+                        let next_pos = (pos + 1) % group.len();
+                        let new_idx = group[next_pos];
+                        self.current_theme_index = new_idx;
+                        let (filename, mode) = &self.available_themes[new_idx];
+                        if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
+                            self.theme = new_theme;
+                        }
                     }
-                } else {
-                    // Fallback: try to find the next global entry that matches the current mode,
-                    // otherwise just advance by one.
-                    let total = self.available_themes.len();
-                    let mut chosen = (self.current_theme_index + 1) % total;
-                    if let Some(idx) = (0..total)
-                        .map(|n| (self.current_theme_index + 1 + n) % total)
-                        .find(|&i| {
-                            self.available_themes[i]
-                                .1
-                                .eq_ignore_ascii_case(&current_mode)
-                        })
-                    {
-                        chosen = idx;
-                    }
-                    self.current_theme_index = chosen;
-                    let (filename, mode) = &self.available_themes[self.current_theme_index];
-                    if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
-                        self.theme = new_theme;
+                    _ => {
+                        // Fallback: try to find the next global entry that matches the current mode,
+                        // otherwise just advance by one.
+                        let total = self.available_themes.len();
+                        let mut chosen = (self.current_theme_index + 1) % total;
+                        if let Some(idx) = (0..total)
+                            .map(|n| (self.current_theme_index + 1 + n) % total)
+                            .find(|&i| {
+                                self.available_themes[i]
+                                    .1
+                                    .eq_ignore_ascii_case(&current_mode)
+                            })
+                        {
+                            chosen = idx;
+                        }
+                        self.current_theme_index = chosen;
+                        let (filename, mode) = &self.available_themes[self.current_theme_index];
+                        if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
+                            self.theme = new_theme;
+                        }
                     }
                 }
+            }
+            // Bookmark-related actions
+            Action::ToggleBookmark => {
+                // Determine the story to toggle:
+                // - Prefer the currently selected detailed story (`selected_story`)
+                // - Otherwise use the selected item from the list
+                // For the Bookmarks view the list indices correspond to `self.bookmarks.stories`
+                // (not `self.stories`), so handle that case explicitly.
+                // Capture the current list selection index so we can adjust it after toggling
+                let prev_selected_idx = self.story_list_state.selected();
+                let maybe_story: Option<Story> =
+                    match (&self.selected_story, self.story_list_state.selected()) {
+                        (Some(s), _) => Some(s.clone()),
+                        (None, Some(idx)) => {
+                            match self.view_mode {
+                                ViewMode::Bookmarks => {
+                                    // Selected index refers into bookmarks.stories
+                                    self.bookmarks.stories.get(idx).map(|bookmarked| Story {
+                                        id: bookmarked.id,
+                                        title: Some(bookmarked.title.clone()),
+                                        url: bookmarked.url.clone(),
+                                        by: None,
+                                        score: None,
+                                        time: None,
+                                        descendants: None,
+                                        kids: None,
+                                    })
+                                }
+                                _ => {
+                                    // Normal list: map displayed indices to stories
+                                    let displayed = self.filtered_story_indices();
+                                    displayed.get(idx).map(|(_, s)| (*s).clone())
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+
+                match maybe_story {
+                    Some(story) => {
+                        self.bookmarks.toggle(&story);
+                        // Persist bookmarks immediately; log on failure
+                        match self.bookmarks.save() {
+                            Err(e) => {
+                                tracing::error!(%e, "Failed to save bookmarks");
+                                self.notification_message =
+                                    Some("Failed to save bookmarks".to_string());
+                            }
+                            Ok(_) => {
+                                let msg = match self.bookmarks.contains(story.id) {
+                                    true => "Bookmarked".to_string(),
+                                    false => "Bookmark removed".to_string(),
+                                };
+                                self.notification_message = Some(msg);
+                            }
+                        }
+                        self.notification_timer = Some(tokio::time::Instant::now());
+
+                        // If we're in the Bookmarks view, adjust the selection so that a removed
+                        // bookmark disappears from the list and selection is clamped to a valid index.
+                        if let ViewMode::Bookmarks = self.view_mode {
+                            // If the story is no longer contained, it was removed.
+                            match (
+                                self.bookmarks.contains(story.id),
+                                self.bookmarks.stories.is_empty(),
+                                prev_selected_idx,
+                            ) {
+                                (false, true, _) => {
+                                    // No bookmarks left: clear selection
+                                    self.story_list_state.select(None);
+                                }
+                                (false, false, Some(prev)) => {
+                                    // Clamp selection to last index if needed
+                                    let max_idx = self.bookmarks.stories.len().saturating_sub(1);
+                                    let new_idx = if prev > max_idx { max_idx } else { prev };
+                                    self.story_list_state.select(Some(new_idx));
+                                }
+                                (false, false, None) => {
+                                    // No previous selection recorded: select first item
+                                    self.story_list_state.select(Some(0));
+                                }
+                                (true, _, _) => {
+                                    // If the bookmark was added while in Bookmarks view, put selection
+                                    // on the newly-added item (bookmarks.add inserts at 0).
+                                    self.story_list_state.select(Some(0));
+                                }
+                            }
+
+                            // Clear any selected_story because the Bookmarks view is a list view
+                            self.selected_story = None;
+                        }
+
+                        // Schedule notification clear after a short delay
+                        let tx = self.action_tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                            let _ = tx.send(Action::ClearNotification);
+                        });
+                    }
+                    None => {
+                        self.notification_message =
+                            Some("No story selected to (un)bookmark".to_string());
+                        self.notification_timer = Some(tokio::time::Instant::now());
+
+                        // Schedule notification clear after a short delay
+                        let tx = self.action_tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                            let _ = tx.send(Action::ClearNotification);
+                        });
+                    }
+                }
+            }
+            Action::ViewBookmarks => {
+                // Switch UI into the Bookmarks view. Selection state in the list is reused
+                // to show bookmarked items; the view rendering code is responsible for
+                // interpreting App.bookmarks when the view_mode == Bookmarks.
+                self.view_mode = ViewMode::Bookmarks;
+                // Reset selection to first item if we have bookmarks
+                match self.bookmarks.stories.first() {
+                    Some(_) => self.story_list_state.select(Some(0)),
+                    None => self.story_list_state.select(None),
+                }
+            }
+            Action::ExportBookmarks => {
+                // Export bookmarks to a simple file in the config dir
+                match dirs::config_dir() {
+                    Some(dir) => {
+                        let app_dir = dir.join("tui-hn-app");
+                        match std::fs::create_dir_all(&app_dir) {
+                            Err(e) => {
+                                tracing::error!(%e, "Failed to create config dir for export");
+                                self.notification_message =
+                                    Some("Bookmark export failed".to_string());
+                            }
+                            Ok(_) => {
+                                let export_path = app_dir.join("bookmarks_export.json");
+                                match serde_json::to_string_pretty(&self.bookmarks) {
+                                    Ok(content) => match std::fs::write(&export_path, content) {
+                                        Ok(_) => {
+                                            self.notification_message = Some(format!(
+                                                "Exported to {}",
+                                                export_path.display()
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(%e, "Failed to write export file");
+                                            self.notification_message =
+                                                Some("Bookmark export failed".to_string());
+                                        }
+                                    },
+                                    Err(e) => {
+                                        tracing::error!(%e, "Failed to serialize bookmarks");
+                                        self.notification_message =
+                                            Some("Bookmark export failed".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        self.notification_message =
+                            Some("Bookmark export failed (no config dir)".to_string());
+                    }
+                }
+                self.notification_timer = Some(tokio::time::Instant::now());
+            }
+            Action::ImportBookmarks => {
+                // Try to load bookmarks from disk (bookmarks.json). If it fails, keep current bookmarks.
+                match crate::internal::bookmarks::Bookmarks::load_or_create() {
+                    Ok(b) => {
+                        self.bookmarks = b;
+                        self.notification_message = Some("Bookmarks imported".to_string());
+                    }
+                    Err(e) => {
+                        tracing::error!(%e, "Failed to import bookmarks");
+                        self.notification_message = Some("Bookmark import failed".to_string());
+                    }
+                }
+                self.notification_timer = Some(tokio::time::Instant::now());
             }
             Action::ClearNotification => {
                 self.notification_message = None;
@@ -1086,21 +1374,22 @@ impl App {
     /// after applying the search filter. This ensures selection indices used by `ListState`
     /// correspond to the displayed items.
     pub fn filtered_story_indices(&self) -> Vec<(usize, &Story)> {
-        if self.search_query.is_empty() {
-            self.stories.iter().enumerate().collect()
-        } else {
-            let query = self.search_query.to_lowercase();
-            self.stories
-                .iter()
-                .enumerate()
-                .filter(|(_, story)| {
-                    story
-                        .title
-                        .as_ref()
-                        .map(|t| t.to_lowercase().contains(&query))
-                        .unwrap_or(false)
-                })
-                .collect()
+        match self.search_query.is_empty() {
+            true => self.stories.iter().enumerate().collect(),
+            false => {
+                let query = self.search_query.to_lowercase();
+                self.stories
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, story)| {
+                        story
+                            .title
+                            .as_ref()
+                            .map(|t| t.to_lowercase().contains(&query))
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            }
         }
     }
 
@@ -1111,13 +1400,10 @@ impl App {
         }
 
         let i = match self.story_list_state.selected() {
-            Some(i) => {
-                if i >= displayed.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
+            Some(i) => match i {
+                n if n >= displayed.len() - 1 => 0,
+                _ => i + 1,
+            },
             None => 0,
         };
         self.story_list_state.select(Some(i));
@@ -1130,13 +1416,10 @@ impl App {
         }
 
         let i = match self.story_list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    displayed.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(i) => match i {
+                0 => displayed.len() - 1,
+                n => n - 1,
+            },
             None => 0,
         };
         self.story_list_state.select(Some(i));

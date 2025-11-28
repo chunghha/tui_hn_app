@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-11-28
+
+### Added
+- **Bookmarks/Favorites System**: Save stories for later reading
+  - Toggle bookmark with `b` key on any story
+  - View all bookmarks with `B` key
+  - Bookmark indicator (★) displayed next to bookmarked stories
+  - Persistent storage in `~/.config/tui-hn-app/bookmarks.json`
+  - Dedicated bookmarks view with story count
+  - Export bookmarks to JSON file
+  - Import bookmarks from disk
+  - Uses `jiff` for timestamp management
+
+### Changed
+- Enhanced story list rendering to support bookmark indicators
+- Status bar now shows bookmark count when in bookmarks view
+- Help screen updated with bookmark shortcuts
+
+### Technical
+- Added `bookmarks` module with `Bookmarks` and `BookmarkedStory` structs
+- New `ViewMode::Bookmarks` for dedicated bookmarks view
+- New actions: `ToggleBookmark`, `ViewBookmarks`, `ExportBookmarks`, `ImportBookmarks`
+- Added dependencies: `jiff` (v0.2.16), `dirs` (v6.0.0), `serde_json` (v1.0.145)
+- Pattern matching refactoring for improved code quality
+
 ## [0.4.2] - 2025-11-27
 
 ### Added

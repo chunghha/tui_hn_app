@@ -1,3 +1,4 @@
+#![allow(clippy::single_match)]
 use std::path::Path;
 
 use ratatui::Frame;
@@ -26,107 +27,135 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         ViewMode::List => render_list(app, f, chunks[1]),
         ViewMode::StoryDetail => render_detail(app, f, chunks[1]),
         ViewMode::Article => render_article(app, f, chunks[1]),
+        ViewMode::Bookmarks => render_list(app, f, chunks[1]),
     }
 
     render_status_bar(app, f, chunks[2]);
 
     // Render search overlay if in search mode
-    if app.input_mode == InputMode::Search {
-        render_search_overlay(app, f);
+    match app.input_mode {
+        InputMode::Search => render_search_overlay(app, f),
+        _ => {}
     }
 
     // Render notification overlay if present
-    if app.notification_message.is_some() {
-        render_notification(app, f);
+    match app.notification_message {
+        Some(_) => render_notification(app, f),
+        None => {}
     }
 
     // Render progress overlay if loading all stories
-    if app.story_load_progress.is_some() {
-        render_progress_overlay(app, f);
+    match app.story_load_progress {
+        Some(_) => render_progress_overlay(app, f),
+        None => {}
     }
 
     // Render help overlay if active
-    if app.show_help {
-        render_help_overlay(app, f);
+    match app.show_help {
+        true => render_help_overlay(app, f),
+        false => {}
     }
 }
 
 fn render_progress_overlay(app: &App, f: &mut Frame) {
-    if let Some((loaded, total)) = app.story_load_progress {
-        let area = f.area();
-        let popup_width = 60.min(area.width - 4);
-        let popup_height = 5; // Reduced height
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+    match app.story_load_progress {
+        Some((loaded, total)) => {
+            let area = f.area();
+            let popup_width = 60.min(area.width - 4);
+            let popup_height = 5; // Reduced height
+            let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+            let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+            let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-        // Add spinner to title
-        let spinner = app.get_spinner_char();
-        let percent = if total > 0 {
-            (loaded as f64 / total as f64 * 100.0) as u16
-        } else {
-            0
-        };
+            // Add spinner to title
+            let spinner = app.get_spinner_char();
+            let percent = match total {
+                0 => 0,
+                t => (loaded as f64 / t as f64 * 100.0) as u16,
+            };
 
-        let block = Block::default()
-            .title(format!("{} Loading all stories", spinner))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.border))
-            .style(Style::default().bg(app.theme.background));
+            let block = Block::default()
+                .title(format!("{} Loading all stories", spinner))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.border))
+                .style(Style::default().bg(app.theme.background));
 
-        f.render_widget(Clear, popup_area);
-        f.render_widget(&block, popup_area);
+            f.render_widget(Clear, popup_area);
+            f.render_widget(&block, popup_area);
 
-        let inner_area = block.inner(popup_area);
+            let inner_area = block.inner(popup_area);
 
-        // Split into sections for gauge and percentage
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // Gauge
-                Constraint::Length(1), // Percentage
-            ])
-            .split(inner_area);
+            // Split into sections for gauge and percentage
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // Gauge
+                    Constraint::Length(1), // Percentage
+                ])
+                .split(inner_area);
 
-        // Gauge with label
-        let gauge = ratatui::widgets::Gauge::default()
-            .gauge_style(
-                Style::default()
-                    .fg(app.theme.selection_bg)
-                    .bg(app.theme.background),
-            )
-            .label(format!("{}/{}", loaded, total))
-            .percent(percent);
-        f.render_widget(gauge, chunks[0]);
+            // Gauge with label
+            let gauge = ratatui::widgets::Gauge::default()
+                .gauge_style(
+                    Style::default()
+                        .fg(app.theme.selection_bg)
+                        .bg(app.theme.background),
+                )
+                .label(format!("{}/{}", loaded, total))
+                .percent(percent);
+            f.render_widget(gauge, chunks[0]);
 
-        // Percentage text
-        let percent_text = Paragraph::new(format!("{}%", percent))
-            .style(Style::default().fg(app.theme.comment_time))
-            .alignment(Alignment::Center);
-        f.render_widget(percent_text, chunks[1]);
+            // Percentage text
+            let percent_text = Paragraph::new(format!("{}%", percent))
+                .style(Style::default().fg(app.theme.comment_time))
+                .alignment(Alignment::Center);
+            f.render_widget(percent_text, chunks[1]);
+        }
+        None => {}
     }
 }
 
 fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
-    // Filter stories based on search query
-    let filtered_stories: Vec<_> = if app.search_query.is_empty() {
-        app.stories.iter().enumerate().collect()
-    } else {
-        let query = app.search_query.to_lowercase();
-        app.stories
-            .iter()
-            .enumerate()
-            .filter(|(_, story)| {
-                story
-                    .title
-                    .as_ref()
-                    .map(|t| t.to_lowercase().contains(&query))
-                    .unwrap_or(false)
-            })
-            .collect()
+    // Determine which stories to display based on view mode
+    let stories_to_display: Vec<_> = match app.view_mode {
+        ViewMode::Bookmarks => {
+            // Convert bookmarked stories to Story objects for display
+            app.bookmarks
+                .stories
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, bookmarked)| {
+                    // Find the full story in app.stories if available
+                    app.stories
+                        .iter()
+                        .find(|s| s.id == bookmarked.id)
+                        .map(|story| (idx, story))
+                })
+                .collect()
+        }
+        _ => {
+            // Filter stories based on search query for normal list view
+            match app.search_query.as_str() {
+                "" => app.stories.iter().enumerate().collect(),
+                query_str => {
+                    let query = query_str.to_lowercase();
+                    app.stories
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, story)| {
+                            story
+                                .title
+                                .as_ref()
+                                .map(|t| t.to_lowercase().contains(&query))
+                                .unwrap_or(false)
+                        })
+                        .collect()
+                }
+            }
+        }
     };
 
-    let items: Vec<ListItem> = filtered_stories
+    let items: Vec<ListItem> = stories_to_display
         .iter()
         .map(|(_, story)| {
             let title = story.title.as_deref().unwrap_or("No Title");
@@ -148,9 +177,19 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                 .map(crate::utils::datetime::format_timestamp)
                 .unwrap_or_else(|| "unknown".to_string());
 
-            // Title line with score and domain
+            // Add bookmark indicator if story is bookmarked
+            let bookmark_indicator = match app.bookmarks.contains(story.id) {
+                true => "★ ",
+                false => "",
+            };
+
+            // Title line with score, bookmark indicator, and domain
             let title_line = Line::from(vec![
                 Span::styled(format!("{} ", score), Style::default().fg(app.theme.score)),
+                Span::styled(
+                    bookmark_indicator,
+                    Style::default().fg(app.theme.selection_bg),
+                ),
                 Span::styled(title, Style::default().fg(app.theme.foreground)),
                 Span::styled(domain, Style::default().fg(app.theme.comment_time)),
             ]);
@@ -173,16 +212,15 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
         .collect();
 
     // Place the version next to the "Hacker News" label in the title
-    let title = if app.search_query.is_empty() {
-        format!(
+    let title = match app.search_query.as_str() {
+        "" => format!(
             "Hacker News v{} - {}",
             app.app_version, app.current_list_type
-        )
-    } else {
-        format!(
+        ),
+        query => format!(
             "Hacker News v{} - {} (Filter: {})",
-            app.app_version, app.current_list_type, app.search_query
-        )
+            app.app_version, app.current_list_type, query
+        ),
     };
 
     let list = List::new(items)
@@ -253,10 +291,9 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
         for row in &app.comments {
             // Skip collapsed children
             if let Some(until_depth) = skip_until_depth {
-                if row.depth > until_depth {
-                    continue;
-                } else {
-                    skip_until_depth = None;
+                match row.depth.cmp(&until_depth) {
+                    std::cmp::Ordering::Greater => continue,
+                    _ => skip_until_depth = None,
                 }
             }
 
@@ -274,20 +311,19 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
             let indent = "  ".repeat(row.depth);
             let mut guide = String::new();
             for i in 0..row.depth {
-                if i < row.depth - 1 {
-                    guide.push_str("│ ");
-                } else {
-                    guide.push_str("└─");
+                match i.cmp(&row.depth.saturating_sub(1)) {
+                    std::cmp::Ordering::Less => guide.push_str("│ "),
+                    _ => guide.push_str("└─"),
                 }
             }
 
             // Collapse indicator
             let has_kids =
                 row.comment.kids.is_some() && !row.comment.kids.as_ref().unwrap().is_empty();
-            let collapse_indicator = if has_kids {
-                if row.expanded { "[-] " } else { "[+] " }
-            } else {
-                ""
+            let collapse_indicator = match (has_kids, row.expanded) {
+                (true, true) => "[-] ",
+                (true, false) => "[+] ",
+                _ => "",
             };
 
             // Set skip flag if collapsed
@@ -327,14 +363,12 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
             all_lines.push(Line::from("")); // Empty line for spacing
         }
 
-        let comments_title = if app.comment_ids.is_empty() {
-            "Comments (Tab to view Article)".to_string()
-        } else {
-            format!(
+        let comments_title = match app.comment_ids.len() {
+            0 => "Comments (Tab to view Article)".to_string(),
+            len => format!(
                 "Comments ({}/{}) - n: Load More | Tab: Article",
-                app.loaded_comments_count,
-                app.comment_ids.len()
-            )
+                app.loaded_comments_count, len
+            ),
         };
 
         let paragraph = Paragraph::new(all_lines)
@@ -354,222 +388,222 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
 
 fn render_article(app: &App, f: &mut Frame, area: Rect) {
     // If we have a selected story, show the same metadata block as in the detail view
-    if let Some(story) = &app.selected_story {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(5), Constraint::Min(0)])
-            .split(area);
+    match &app.selected_story {
+        Some(story) => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(5), Constraint::Min(0)])
+                .split(area);
 
-        let title = story.title.as_deref().unwrap_or("No Title");
-        let url = story.url.as_deref().unwrap_or("No URL");
-        let time = story
-            .time
-            .as_ref()
-            .map(crate::utils::datetime::format_timestamp)
-            .unwrap_or_else(|| "unknown".to_string());
-        let meta_text = format!(
-            "Title: {}\nURL: {}\nScore: {}\nBy: {}\nTime: {}",
-            title,
-            url,
-            story.score.unwrap_or(0),
-            story.by.as_deref().unwrap_or("unknown"),
-            time
-        );
+            let title = story.title.as_deref().unwrap_or("No Title");
+            let url = story.url.as_deref().unwrap_or("No URL");
+            let time = story
+                .time
+                .as_ref()
+                .map(crate::utils::datetime::format_timestamp)
+                .unwrap_or_else(|| "unknown".to_string());
+            let meta_text = format!(
+                "Title: {}\nURL: {}\nScore: {}\nBy: {}\nTime: {}",
+                title,
+                url,
+                story.score.unwrap_or(0),
+                story.by.as_deref().unwrap_or("unknown"),
+                time
+            );
 
-        let meta_p = Paragraph::new(meta_text)
-            .style(
-                Style::default()
-                    .fg(app.theme.foreground)
-                    .bg(app.theme.background),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
-                    .border_style(Style::default().fg(app.theme.border))
-                    .title("Story Details")
-                    .title_style(Style::default().fg(app.theme.foreground)),
-            )
-            .wrap(Wrap { trim: true });
-        f.render_widget(meta_p, chunks[0]);
-
-        let content_lines = if app.article_loading {
-            vec![Line::from("Loading article...")]
-        } else if let Some(article) = &app.article_content {
-            let mut lines = Vec::new();
-            if !article.title.is_empty() {
-                lines.push(Line::from(Span::styled(
-                    &article.title,
+            let meta_p = Paragraph::new(meta_text)
+                .style(
                     Style::default()
                         .fg(app.theme.foreground)
-                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-                )));
-                lines.push(Line::from(""));
-            }
+                        .bg(app.theme.background),
+                )
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
+                        .border_style(Style::default().fg(app.theme.border))
+                        .title("Story Details")
+                        .title_style(Style::default().fg(app.theme.foreground)),
+                )
+                .wrap(Wrap { trim: true });
+            f.render_widget(meta_p, chunks[0]);
 
-            for element in &article.elements {
-                match element {
-                    crate::internal::models::ArticleElement::Paragraph(text) => {
+            let content_lines = match (app.article_loading, &app.article_content) {
+                (true, _) => vec![Line::from("Loading article...")],
+                (false, Some(article)) => {
+                    let mut lines = Vec::new();
+                    if !article.title.is_empty() {
                         lines.push(Line::from(Span::styled(
-                            text,
-                            Style::default().fg(app.theme.foreground),
-                        )));
-                        lines.push(Line::from(""));
-                    }
-                    crate::internal::models::ArticleElement::Heading(level, text) => {
-                        let style = match level {
-                            1 => Style::default()
+                            &article.title,
+                            Style::default()
                                 .fg(app.theme.foreground)
                                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-                            2 => Style::default()
-                                .fg(app.theme.foreground)
-                                .add_modifier(Modifier::BOLD),
-                            _ => Style::default()
-                                .fg(app.theme.foreground)
-                                .add_modifier(Modifier::ITALIC),
-                        };
-                        lines.push(Line::from(Span::styled(text, style)));
+                        )));
                         lines.push(Line::from(""));
                     }
-                    crate::internal::models::ArticleElement::CodeBlock { lang, code } => {
-                        let lang_info = lang.as_deref().unwrap_or("text");
-                        lines.push(Line::from(Span::styled(
-                            format!("```{}", lang_info),
-                            Style::default().fg(app.theme.comment_time),
-                        )));
-                        for line in code.lines() {
-                            lines.push(Line::from(Span::styled(
-                                line,
-                                Style::default().fg(app.theme.comment_author), // Use a different color for code
-                            )));
+
+                    for element in &article.elements {
+                        match element {
+                            crate::internal::models::ArticleElement::Paragraph(text) => {
+                                lines.push(Line::from(Span::styled(
+                                    text,
+                                    Style::default().fg(app.theme.foreground),
+                                )));
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::Heading(level, text) => {
+                                let style = match level {
+                                    1 => Style::default()
+                                        .fg(app.theme.foreground)
+                                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                                    2 => Style::default()
+                                        .fg(app.theme.foreground)
+                                        .add_modifier(Modifier::BOLD),
+                                    _ => Style::default()
+                                        .fg(app.theme.foreground)
+                                        .add_modifier(Modifier::ITALIC),
+                                };
+                                lines.push(Line::from(Span::styled(text, style)));
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::CodeBlock { lang, code } => {
+                                let lang_info = lang.as_deref().unwrap_or("text");
+                                lines.push(Line::from(Span::styled(
+                                    format!("```{}", lang_info),
+                                    Style::default().fg(app.theme.comment_time),
+                                )));
+                                for line in code.lines() {
+                                    lines.push(Line::from(Span::styled(
+                                        line,
+                                        Style::default().fg(app.theme.comment_author), // Use a different color for code
+                                    )));
+                                }
+                                lines.push(Line::from(Span::styled(
+                                    "```",
+                                    Style::default().fg(app.theme.comment_time),
+                                )));
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::List(items) => {
+                                for item in items {
+                                    lines.push(Line::from(vec![
+                                        Span::styled(" • ", Style::default().fg(app.theme.border)),
+                                        Span::styled(
+                                            item,
+                                            Style::default().fg(app.theme.foreground),
+                                        ),
+                                    ]));
+                                }
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::Table(rows) => {
+                                lines.push(Line::from(Span::styled(
+                                    "[Table]",
+                                    Style::default()
+                                        .fg(app.theme.comment_time)
+                                        .add_modifier(Modifier::ITALIC),
+                                )));
+                                // Simple ASCII rendering for now
+                                for row in rows {
+                                    let row_text = row.join(" | ");
+                                    lines.push(Line::from(Span::styled(
+                                        format!("| {} |", row_text),
+                                        Style::default().fg(app.theme.foreground),
+                                    )));
+                                }
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::Image(alt) => {
+                                lines.push(Line::from(Span::styled(
+                                    format!("[IMAGE: {}]", alt),
+                                    Style::default()
+                                        .fg(app.theme.comment_time)
+                                        .add_modifier(Modifier::ITALIC),
+                                )));
+                                lines.push(Line::from(""));
+                            }
+                            crate::internal::models::ArticleElement::Quote(text) => {
+                                lines.push(Line::from(vec![
+                                    Span::styled("│ ", Style::default().fg(app.theme.border)),
+                                    Span::styled(
+                                        text,
+                                        Style::default()
+                                            .fg(app.theme.foreground)
+                                            .add_modifier(Modifier::ITALIC),
+                                    ),
+                                ]));
+                                lines.push(Line::from(""));
+                            }
                         }
-                        lines.push(Line::from(Span::styled(
-                            "```",
-                            Style::default().fg(app.theme.comment_time),
-                        )));
-                        lines.push(Line::from(""));
                     }
-                    crate::internal::models::ArticleElement::List(items) => {
-                        for item in items {
-                            lines.push(Line::from(vec![
-                                Span::styled(" • ", Style::default().fg(app.theme.border)),
-                                Span::styled(item, Style::default().fg(app.theme.foreground)),
-                            ]));
-                        }
-                        lines.push(Line::from(""));
-                    }
-                    crate::internal::models::ArticleElement::Table(rows) => {
-                        lines.push(Line::from(Span::styled(
-                            "[Table]",
-                            Style::default()
-                                .fg(app.theme.comment_time)
-                                .add_modifier(Modifier::ITALIC),
-                        )));
-                        // Simple ASCII rendering for now
-                        for row in rows {
-                            let row_text = row.join(" | ");
-                            lines.push(Line::from(Span::styled(
-                                format!("| {} |", row_text),
-                                Style::default().fg(app.theme.foreground),
-                            )));
-                        }
-                        lines.push(Line::from(""));
-                    }
-                    crate::internal::models::ArticleElement::Image(alt) => {
-                        lines.push(Line::from(Span::styled(
-                            format!("[IMAGE: {}]", alt),
-                            Style::default()
-                                .fg(app.theme.comment_time)
-                                .add_modifier(Modifier::ITALIC),
-                        )));
-                        lines.push(Line::from(""));
-                    }
-                    crate::internal::models::ArticleElement::Quote(text) => {
-                        lines.push(Line::from(vec![
-                            Span::styled("│ ", Style::default().fg(app.theme.border)),
-                            Span::styled(
-                                text,
-                                Style::default()
-                                    .fg(app.theme.foreground)
-                                    .add_modifier(Modifier::ITALIC),
-                            ),
-                        ]));
-                        lines.push(Line::from(""));
-                    }
+                    lines
                 }
-            }
-            lines
-        } else {
-            vec![Line::from("No content available or failed to load.")]
-        };
+                (false, None) => vec![Line::from("No content available or failed to load.")],
+            };
 
-        let p = Paragraph::new(content_lines)
-            .style(
-                Style::default()
-                    .fg(app.theme.foreground)
-                    .bg(app.theme.background),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
-                    .border_style(Style::default().fg(app.theme.border))
-                    .title("Article View (Tab to view Comments)")
-                    .title_style(Style::default().fg(app.theme.foreground)),
-            )
-            .wrap(Wrap { trim: true })
-            .scroll((app.article_scroll as u16, 0));
-        f.render_widget(p, chunks[1]);
-    } else {
-        // Fallback: no selected story, render empty or loading
-        let content_lines = if app.article_loading {
-            vec![Line::from("Loading article...")]
-        } else if let Some(_article) = &app.article_content {
-            // Reuse rendering logic? Or just simple text for now to fix compilation.
-            // Since we are in fallback mode (no selected story), we might just show the article if it exists (unlikely)
-            // or just a placeholder.
-            vec![Line::from("Select a story to view article.")]
-        } else {
-            vec![Line::from("Select a story to view article.")]
-        };
+            let p = Paragraph::new(content_lines)
+                .style(
+                    Style::default()
+                        .fg(app.theme.foreground)
+                        .bg(app.theme.background),
+                )
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
+                        .border_style(Style::default().fg(app.theme.border))
+                        .title("Article View (Tab to view Comments)")
+                        .title_style(Style::default().fg(app.theme.foreground)),
+                )
+                .wrap(Wrap { trim: true })
+                .scroll((app.article_scroll as u16, 0));
+            f.render_widget(p, chunks[1]);
+        }
+        None => {
+            // Fallback: no selected story, render empty or loading
+            let content_lines = match (app.article_loading, &app.article_content) {
+                (true, _) => vec![Line::from("Loading article...")],
+                (false, Some(_)) => vec![Line::from("Select a story to view article.")],
+                (false, None) => vec![Line::from("Select a story to view article.")],
+            };
 
-        let p = Paragraph::new(content_lines)
-            .style(
-                Style::default()
-                    .fg(app.theme.foreground)
-                    .bg(app.theme.background),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
-                    .border_style(Style::default().fg(app.theme.border))
-                    .title("Article View (Tab to view Comments)")
-                    .title_style(Style::default().fg(app.theme.foreground)),
-            )
-            .wrap(Wrap { trim: true })
-            .scroll((app.article_scroll as u16, 0));
-        f.render_widget(p, area);
+            let p = Paragraph::new(content_lines)
+                .style(
+                    Style::default()
+                        .fg(app.theme.foreground)
+                        .bg(app.theme.background),
+                )
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .padding(Padding::horizontal(1))
+                        .border_style(Style::default().fg(app.theme.border))
+                        .title("Article View (Tab to view Comments)")
+                        .title_style(Style::default().fg(app.theme.foreground)),
+                )
+                .wrap(Wrap { trim: true })
+                .scroll((app.article_scroll as u16, 0));
+            f.render_widget(p, area);
+        }
     }
 }
 
 fn render_top_bar(app: &App, f: &mut Frame, area: Rect) {
-    let theme_name = if !app.available_themes.is_empty() {
-        let (path, mode) = &app.available_themes[app.current_theme_index];
-        let filename = Path::new(path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-        format!("Theme: {} ({})", filename, mode)
-    } else {
-        String::new()
+    let theme_name = match app.available_themes.get(app.current_theme_index) {
+        Some((path, mode)) => {
+            let filename = Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            format!("Theme: {} ({})", filename, mode)
+        }
+        None => String::new(),
     };
 
     // Show theme and auto-switch status in the top-right corner
-    let auto_status = if app.config.auto_switch_dark_to_light {
-        "Auto:On"
-    } else {
-        "Auto:Off"
+    let auto_status = match app.config.auto_switch_dark_to_light {
+        true => "Auto:On",
+        false => "Auto:Off",
     };
     let top_bar_text = format!("{}  {}", theme_name, auto_status);
 
@@ -585,15 +619,17 @@ fn render_top_bar(app: &App, f: &mut Frame, area: Rect) {
 }
 
 fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
-    let status = if app.loading || app.comments_loading || app.article_loading {
-        // Show animated spinner with loading description
-        let spinner = app.get_spinner_char();
-        let desc = app
-            .loading_description()
-            .unwrap_or_else(|| "Loading...".to_string());
-
-        // If we have story count info, append it
-        if !app.story_ids.is_empty() && app.view_mode == ViewMode::List {
+    let status = match (
+        app.loading || app.comments_loading || app.article_loading,
+        &app.input_mode,
+        &app.view_mode,
+    ) {
+        (true, _, &ViewMode::List) if !app.story_ids.is_empty() => {
+            // Show animated spinner with loading description and story counts
+            let spinner = app.get_spinner_char();
+            let desc = app
+                .loading_description()
+                .unwrap_or_else(|| "Loading...".to_string());
             format!(
                 "{} {} | {}/{}",
                 spinner,
@@ -601,43 +637,56 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 app.loaded_count,
                 app.story_ids.len()
             )
-        } else {
+        }
+        (true, _, _) => {
+            // Show animated spinner with loading description
+            let spinner = app.get_spinner_char();
+            let desc = app
+                .loading_description()
+                .unwrap_or_else(|| "Loading...".to_string());
             format!("{} {}", spinner, desc)
         }
-    } else if app.input_mode == InputMode::Search {
-        // Simplified status bar for search mode
-        "Search: Type to filter | Enter/Esc: Finish | Ctrl+C: Clear".to_string()
-    } else {
-        match app.view_mode {
-            ViewMode::List => {
-                let loaded_info = if !app.story_ids.is_empty() {
-                    format!(" | {}/{}", app.loaded_count, app.story_ids.len())
-                } else {
-                    String::new()
-                };
-                let filter_hint = if !app.search_query.is_empty() {
-                    format!(" | Filter: {}", app.search_query)
-                } else {
-                    String::new()
-                };
-                let clear_hint = if !app.search_query.is_empty() {
-                    " | C: Clear"
-                } else {
-                    ""
-                };
-                format!(
-                    "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | t: Theme | ?: Help | q: Quit{}{}{}",
-                    loaded_info, filter_hint, clear_hint
-                )
-            }
-            ViewMode::StoryDetail => {
-                "Esc/q: Back | o: Browser | n: More Comments | Tab: Article | t: Theme | ?: Help"
-                    .to_string()
-            }
-            ViewMode::Article => {
-                "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme | ?: Help"
-                    .to_string()
-            }
+        (false, &InputMode::Search, _) => {
+            // Simplified status bar for search mode
+            "Search: Type to filter | Enter/Esc: Finish | Ctrl+C: Clear".to_string()
+        }
+        (false, _, &ViewMode::List) => {
+            let loaded_info = match app.story_ids.len() {
+                0 => String::new(),
+                len => format!(" | {}/{}", app.loaded_count, len),
+            };
+            let filter_hint = match app.search_query.as_str() {
+                "" => String::new(),
+                q => format!(" | Filter: {}", q),
+            };
+            let clear_hint = match app.search_query.is_empty() {
+                false => " | C: Clear",
+                true => "",
+            };
+            format!(
+                "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | b: Bookmark | B: View Bookmarks | t: Theme | ?: Help | q: Quit{}{}{}",
+                loaded_info, filter_hint, clear_hint
+            )
+        }
+        (false, _, &ViewMode::StoryDetail) => {
+            "Esc/q: Back | o: Browser | b: Bookmark | n: More Comments | Tab: Article | t: Theme | ?: Help"
+                .to_string()
+        }
+        (false, _, &ViewMode::Article) => {
+            "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme | ?: Help"
+                .to_string()
+        }
+        (false, _, &ViewMode::Bookmarks) => {
+            // Show a compact status for bookmarks view, including count
+            let count = app.bookmarks.stories.len();
+            let bookmark_info = match count {
+                0 => "No bookmarks".to_string(),
+                n => format!("Bookmarks: {}", n),
+            };
+            format!(
+                "Esc/q: Back | Enter: View | t: Theme | ?: Help | {}",
+                bookmark_info
+            )
         }
     };
 
@@ -652,37 +701,40 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
 }
 
 fn render_notification(app: &App, f: &mut Frame) {
-    if let Some(msg) = &app.notification_message {
-        let area = f.area();
+    match &app.notification_message {
+        Some(msg) => {
+            let area = f.area();
 
-        // Create centered popup
-        let popup_width = (msg.len() as u16 + 4).min(area.width - 4);
-        let popup_height = 3;
+            // Create centered popup
+            let popup_width = (msg.len() as u16 + 4).min(area.width - 4);
+            let popup_height = 3;
 
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+            let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+            let popup_y = (area.height.saturating_sub(popup_height)) / 2;
 
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+            let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-        // Clear background
-        let popup = Paragraph::new(msg.as_str())
-            .style(
-                Style::default()
-                    .bg(app.theme.selection_bg)
-                    .fg(app.theme.selection_fg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.theme.border))
-                    .title("Info")
-                    .title_style(Style::default().fg(app.theme.foreground)),
-            )
-            .alignment(Alignment::Center);
+            // Clear background
+            let popup = Paragraph::new(msg.as_str())
+                .style(
+                    Style::default()
+                        .bg(app.theme.selection_bg)
+                        .fg(app.theme.selection_fg)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(app.theme.border))
+                        .title("Info")
+                        .title_style(Style::default().fg(app.theme.foreground)),
+                )
+                .alignment(Alignment::Center);
 
-        f.render_widget(Clear, popup_area);
-        f.render_widget(popup, popup_area);
+            f.render_widget(Clear, popup_area);
+            f.render_widget(popup, popup_area);
+        }
+        None => {}
     }
 }
 
@@ -728,8 +780,8 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
     let area = f.area();
 
     // Create centered popup
-    let popup_width = 80.min(area.width - 4);
-    let popup_height = 20.min(area.height - 4);
+    let popup_width = 56.min(area.width - 4);
+    let popup_height = 26.min(area.height - 4);
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
     let popup_y = (area.height.saturating_sub(popup_height)) / 2;
@@ -831,6 +883,23 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
             Span::raw("  "),
             Span::styled("A", Style::default().fg(app.theme.comment_time)),
             Span::raw("        Load ALL stories"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Bookmarks",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("b", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Toggle bookmark on selected story"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("B", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        View bookmarked stories"),
         ]),
         Line::from(""),
         Line::from(vec![Span::styled(

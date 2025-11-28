@@ -6,10 +6,9 @@ pub fn extract_domain(url: &str) -> Option<String> {
     let url = url.trim();
 
     // Remove scheme if present
-    let without_scheme = if let Some(idx) = url.find("://") {
-        &url[idx + 3..]
-    } else {
-        url
+    let without_scheme = match url.find("://") {
+        Some(idx) => &url[idx + 3..],
+        None => url,
     };
 
     // Extract host before path or query
@@ -24,10 +23,9 @@ pub fn extract_domain(url: &str) -> Option<String> {
     // Remove port if present
     let domain = host.split(':').next()?;
 
-    if domain.is_empty() {
-        None
-    } else {
-        Some(domain.to_string())
+    match domain {
+        "" => None,
+        _ => Some(domain.to_string()),
     }
 }
 
