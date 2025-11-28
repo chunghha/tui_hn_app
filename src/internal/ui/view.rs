@@ -134,21 +134,41 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
             let by = story.by.as_deref().unwrap_or("unknown");
             let comments = story.descendants.unwrap_or(0);
 
+            // Extract domain from URL
+            let domain = story
+                .url
+                .as_ref()
+                .and_then(|url| crate::utils::url::extract_domain(url))
+                .map(|d| format!(" ({})", d))
+                .unwrap_or_default();
+
             let time = story
                 .time
                 .as_ref()
                 .map(crate::utils::datetime::format_timestamp)
                 .unwrap_or_else(|| "unknown".to_string());
 
-            let content = Line::from(vec![
+            // Title line with score and domain
+            let title_line = Line::from(vec![
                 Span::styled(format!("{} ", score), Style::default().fg(app.theme.score)),
                 Span::styled(title, Style::default().fg(app.theme.foreground)),
+                Span::styled(domain, Style::default().fg(app.theme.comment_time)),
+            ]);
+
+            // Metadata line with age, comments, and author
+            let meta_line = Line::from(vec![
+                Span::styled("    ", Style::default()), // Indent
+                Span::styled(time, Style::default().fg(app.theme.comment_time)),
+                Span::styled(" | ", Style::default().fg(app.theme.border)),
                 Span::styled(
-                    format!(" ({} comments by {} | {})", comments, by, time),
+                    format!("{} comments", comments),
                     Style::default().fg(app.theme.comment_time),
                 ),
+                Span::styled(" | by ", Style::default().fg(app.theme.border)),
+                Span::styled(by, Style::default().fg(app.theme.comment_author)),
             ]);
-            ListItem::new(content)
+
+            ListItem::new(vec![title_line, meta_line])
         })
         .collect();
 

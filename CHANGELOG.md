@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2025-11-27
+
+### Added
+- **Story Metadata Display**: Enhanced story list view
+  - Domain/source extraction and display (e.g., "github.com")
+  - Two-line layout for better readability
+  - Age indicator using relative time (already implemented in v0.3.x)
+
 ## [0.4.1] - 2025-11-27
 
 ### Added

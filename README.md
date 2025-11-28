@@ -45,6 +45,10 @@ src/
 - Theme loading from JSON files; theme preview in top-right header
 - Version shown in the list title to make builds traceable from the UI
 - Search/filter stories in the list
+- **Enhanced story list** with metadata display
+  - Domain/source extraction (e.g., "github.com")
+  - Two-line layout for better readability
+  - Relative age indicators (e.g., "2h ago", "3d ago")
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments
@@ -62,7 +66,7 @@ src/
 | ![List View](screenshots/list_view.png)  | ![Article View](screenshots/article_view.png) | ![Comments View](screenshots/comments_view.png) |
 | Hacker News Category List | Article content for a selected story | Comments for the selected story |
 
-Note: These screenshots were taken with version `v0.4.1`. Subsequent UI enhancements were made after that release, so the current app appearance may differ from the images shown here.
+Note: These screenshots were taken with version `v0.4.2`. Subsequent UI enhancements were made after that release, so the current app appearance may differ from the images shown here.
 
 ## Configuration
 

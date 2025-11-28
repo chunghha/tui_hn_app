@@ -56,10 +56,11 @@
   - Tree-like structure with visual guides
   - Collapse/expand comment threads
 
-- [ ] **Story Metadata Display**: Show more story information
+- [x] **Story Metadata Display**: Show more story information
+  - ✅ Implemented in v0.4.2
   - Domain/source in list view
   - Story age/freshness indicator
-  - User karma/reputation if available
+  - User karma/reputation (deferred)
 
 ### Navigation & Interaction
 - [ ] **Bookmarks/Favorites**: Save stories for later reading
