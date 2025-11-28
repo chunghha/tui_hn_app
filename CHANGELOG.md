@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2025-11-28
+
+### Added
+- **History Tracking**: Track recently viewed stories
+  - Automatically saves viewed stories to `history.json`
+  - View history with `H` key
+  - Clear history with `X` key (in History view)
+  - Tracks last 50 viewed stories
+  - Shows "viewed X ago" timestamp
+- Unit tests for history logic
+
+### Technical
+- Added `history` module with `History` and `ViewedStory` structs
+- New `ViewMode::History`
+- New actions: `ViewHistory`, `ClearHistory`
+
 ## [0.5.0] - 2025-11-28
 
 ### Added

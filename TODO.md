@@ -1,6 +1,7 @@
 # TUI Hacker News App - Development Roadmap
 
-> **Current Version**: 0.5.0  
+> **Current Version**: 0.5.1
+  
 > See [Version Planning](#version-planning) section below for the full roadmap.
 
 ## ✅ Completed Items
@@ -71,7 +72,7 @@
   - Bookmark indicators (★) in story list
   - Import/export bookmarks
 
-- [ ] **History**: Track recently viewed stories
+- [x] **History**: Track recently viewed stories
   - Last N stories viewed
   - Clear history option
 
@@ -167,9 +168,9 @@ Based on current codebase maturity, I recommend prioritizing:
 
 ### 🚀 v0.5.x Series (Future)
 
-#### v0.5.1 - History Tracking (Optional)
-- Track recently viewed stories
-- Clear history option
+#### v0.5.1 - History Tracking (Completed)
+- ✅ Track recently viewed stories
+- ✅ Clear history option
 
 ### 🎯 v0.6.0+ (Future)
 - Search enhancements (comments, regex)

@@ -23,6 +23,7 @@ pub enum ViewMode {
     StoryDetail,
     Article,
     Bookmarks,
+    History,
 }
 
 /// Input modes for the UI.
@@ -69,6 +70,8 @@ pub enum Action {
     ExportBookmarks,
     #[allow(dead_code)]
     ImportBookmarks,
+    ViewHistory,
+    ClearHistory,
 }
 
 /// Main application state.
@@ -112,6 +115,7 @@ pub struct App {
     pub action_tx: UnboundedSender<Action>,
     pub action_rx: UnboundedReceiver<Action>,
     pub bookmarks: crate::internal::bookmarks::Bookmarks,
+    pub history: crate::internal::history::History,
 }
 
 impl App {
@@ -178,6 +182,14 @@ impl App {
             }
         };
 
+        let history = match crate::internal::history::History::load_or_create(50) {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::error!("Failed to load history: {}", e);
+                crate::internal::history::History::new(50)
+            }
+        };
+
         Self {
             running: true,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -215,6 +227,7 @@ impl App {
             action_tx,
             action_rx,
             bookmarks,
+            history,
         }
     }
 
@@ -571,8 +584,8 @@ impl App {
                 (false, ViewMode::StoryDetail) | (false, ViewMode::Article) => {
                     let _ = self.action_tx.send(Action::Back);
                 }
-                // When in Bookmarks view, Esc/q should go back to the List view
-                (false, ViewMode::Bookmarks) => {
+                // When in Bookmarks or History view, Esc/q should go back to the List view
+                (false, ViewMode::Bookmarks) | (false, ViewMode::History) => {
                     let _ = self.action_tx.send(Action::Back);
                 }
             },
@@ -631,6 +644,14 @@ impl App {
             }
             KeyCode::Char('B') => {
                 let _ = self.action_tx.send(Action::ViewBookmarks);
+            }
+            KeyCode::Char('H') => {
+                let _ = self.action_tx.send(Action::ViewHistory);
+            }
+            KeyCode::Char('X') => {
+                if self.view_mode == ViewMode::History {
+                    let _ = self.action_tx.send(Action::ClearHistory);
+                }
             }
             // Toggle auto_switch_dark_to_light at runtime and persist to config.ron.
             // Pressing 'g' flips the flag, saves config, and shows a short notification.
@@ -748,6 +769,10 @@ impl App {
                     if let Some((_, s)) = displayed.get(index).cloned() {
                         // Clone the story so we send an owned Story in the action.
                         let story = s.clone();
+                        // Add to history
+                        self.history.add(&story);
+                        let _ = self.history.save();
+
                         let _ = self
                             .action_tx
                             .send(Action::SelectStory(story, self.current_list_type));
@@ -1357,6 +1382,23 @@ impl App {
                     }
                 }
                 self.notification_timer = Some(tokio::time::Instant::now());
+            }
+            Action::ViewHistory => {
+                self.view_mode = ViewMode::History;
+                self.story_list_state.select(Some(0));
+            }
+            Action::ClearHistory => {
+                self.history.clear();
+                let _ = self.history.save();
+                self.notification_message = Some("History cleared".to_string());
+                self.notification_timer = Some(tokio::time::Instant::now());
+
+                // Schedule notification clear after a short delay (keep behavior consistent with other notifications)
+                let tx = self.action_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    let _ = tx.send(Action::ClearNotification);
+                });
             }
             Action::ClearNotification => {
                 self.notification_message = None;

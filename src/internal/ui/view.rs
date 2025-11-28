@@ -28,6 +28,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         ViewMode::StoryDetail => render_detail(app, f, chunks[1]),
         ViewMode::Article => render_article(app, f, chunks[1]),
         ViewMode::Bookmarks => render_list(app, f, chunks[1]),
+        ViewMode::History => render_list(app, f, chunks[1]),
     }
 
     render_status_bar(app, f, chunks[2]);
@@ -129,14 +130,40 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                     app.stories
                         .iter()
                         .find(|s| s.id == bookmarked.id)
-                        .map(|story| (idx, story))
+                        .map(|story| (idx, story.clone()))
+                })
+                .collect()
+        }
+        ViewMode::History => {
+            app.history
+                .stories
+                .iter()
+                .enumerate()
+                .map(|(idx, viewed)| {
+                    let story = crate::internal::models::Story {
+                        id: viewed.id,
+                        title: Some(viewed.title.clone()),
+                        url: viewed.url.clone(),
+                        by: viewed.by.clone(),
+                        score: viewed.score,
+                        // Use viewed_at as the time so it shows "viewed X ago"
+                        time: Some(viewed.viewed_at.timestamp().as_second()),
+                        descendants: viewed.descendants,
+                        kids: None,
+                    };
+                    (idx, story)
                 })
                 .collect()
         }
         _ => {
             // Filter stories based on search query for normal list view
             match app.search_query.as_str() {
-                "" => app.stories.iter().enumerate().collect(),
+                "" => app
+                    .stories
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (i, s.clone()))
+                    .collect(),
                 query_str => {
                     let query = query_str.to_lowercase();
                     app.stories
@@ -149,6 +176,7 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                                 .map(|t| t.to_lowercase().contains(&query))
                                 .unwrap_or(false)
                         })
+                        .map(|(i, s)| (i, s.clone()))
                         .collect()
                 }
             }
@@ -221,6 +249,12 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
             "Hacker News v{} - {} (Filter: {})",
             app.app_version, app.current_list_type, query
         ),
+    };
+
+    let title = match app.view_mode {
+        ViewMode::History => format!("History ({} stories)", items.len()),
+        ViewMode::Bookmarks => format!("Bookmarks ({} stories)", items.len()),
+        _ => title,
     };
 
     let list = List::new(items)
@@ -664,7 +698,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 true => "",
             };
             format!(
-                "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | b: Bookmark | B: View Bookmarks | t: Theme | ?: Help | q: Quit{}{}{}",
+                "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | b: Bookmark | B/H: View B/H | t: Theme | ?: Help | q: Quit{}{}{}",
                 loaded_info, filter_hint, clear_hint
             )
         }
@@ -686,6 +720,17 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
             format!(
                 "Esc/q: Back | Enter: View | t: Theme | ?: Help | {}",
                 bookmark_info
+            )
+        }
+        (false, _, &ViewMode::History) => {
+            let count = app.history.stories.len();
+            let history_info = match count {
+                0 => "No history".to_string(),
+                n => format!("History: {}", n),
+            };
+            format!(
+                "Esc/q: Back | Enter: View | X: Clear History | t: Theme | ?: Help | {}",
+                history_info
             )
         }
     };
@@ -781,7 +826,7 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
 
     // Create centered popup
     let popup_width = 56.min(area.width - 4);
-    let popup_height = 26.min(area.height - 4);
+    let popup_height = 30.min(area.height - 4);
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
     let popup_y = (area.height.saturating_sub(popup_height)) / 2;
@@ -900,6 +945,23 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
             Span::raw("  "),
             Span::styled("B", Style::default().fg(app.theme.comment_time)),
             Span::raw("        View bookmarked stories"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "History",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(app.theme.selection_bg),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("H", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        View history"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("X", Style::default().fg(app.theme.comment_time)),
+            Span::raw("        Clean hisoty"),
         ]),
         Line::from(""),
         Line::from(vec![Span::styled(

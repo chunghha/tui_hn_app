@@ -59,6 +59,11 @@ src/
     - To force a specific location on Linux/Unix, set `XDG_CONFIG_HOME` before launching the app. Example:
       `export XDG_CONFIG_HOME="$HOME/.config"` then run the app so bookmarks will be stored under `$XDG_CONFIG_HOME/tui-hn-app/bookmarks.json`
   - Import/export functionality
+- **History Tracking** (v0.5.1)
+  - Tracks last 50 viewed stories
+  - View history with `H` key
+  - Clear history with `X` key
+  - Persistent storage in `history.json`
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments
@@ -144,6 +149,8 @@ If you prefer direct cargo commands:
 | `A` | Load all remaining stories |
 | `b` | Toggle bookmark on selected story |
 | `B` | View bookmarked stories |
+| `H` | View history |
+| `X` | Clear history (in History view) |
 | `t` | Cycle through themes |
 | `g` | Toggle auto-switch dark to light |
 | `Esc` / `q` | Go back / Quit |
