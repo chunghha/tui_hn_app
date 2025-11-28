@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2025-11-28
+
+### Added
+- **Search Enhancements**: Enhanced search functionality
+  - Regex search support with `Ctrl+R` or `F3`
+  - Search mode switching (Title/Comments/Both) with `Ctrl+M` or `F2`
+  - Search history navigation with `↑`/`↓` arrows
+  - Persistent search history (last 20 searches)
+  - Enhanced search overlay showing current mode and type
+  - Regex error display in search overlay
+- Unit tests for search functionality
+
+### Changed
+- Search UI now shows search mode and type in title bar
+- Status bar in search mode shows new keyboard shortcuts
+- All if-else blocks converted to pattern matching for consistency
+
+### Technical
+- Added `search` module with `SearchQuery`, `SearchMode`, `SearchType`, and `SearchHistory`
+- Search history persisted to `search_history.json`
+- Comment search currently limited to already-loaded/cached comments
+
 ## [0.5.1] - 2025-11-28
 
 ### Added

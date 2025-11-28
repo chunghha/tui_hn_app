@@ -1,6 +1,6 @@
 # TUI Hacker News App - Development Roadmap
 
-> **Current Version**: 0.5.1
+> **Current Version**: 0.5.2
   
 > See [Version Planning](#version-planning) section below for the full roadmap.
 
@@ -73,11 +73,13 @@
   - Import/export bookmarks
 
 - [x] **History**: Track recently viewed stories
+  - ✅ Implemented in v0.5.1
   - Last N stories viewed
   - Clear history option
 
-- [ ] **Search Enhancements**: Improve search functionality
-  - Search in comments, not just titles
+- [x] **Search Enhancements**: Improve search functionality
+  - ✅ Implemented in v0.5.2
+  - Search in comments, not just titles (limited to cached comments)
   - Regex search support
   - Search history
 

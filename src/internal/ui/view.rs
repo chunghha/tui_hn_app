@@ -157,24 +157,39 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
         }
         _ => {
             // Filter stories based on search query for normal list view
-            match app.search_query.as_str() {
-                "" => app
+            match app.search_query.is_empty() {
+                true => app
                     .stories
                     .iter()
                     .enumerate()
                     .map(|(i, s)| (i, s.clone()))
                     .collect(),
-                query_str => {
-                    let query = query_str.to_lowercase();
+                false => {
+                    use crate::internal::search::SearchMode;
                     app.stories
                         .iter()
                         .enumerate()
                         .filter(|(_, story)| {
-                            story
+                            let title_match = story
                                 .title
                                 .as_ref()
-                                .map(|t| t.to_lowercase().contains(&query))
-                                .unwrap_or(false)
+                                .map(|t| app.search_query.matches(t))
+                                .unwrap_or(false);
+
+                            match app.search_query.mode {
+                                SearchMode::Title => title_match,
+                                SearchMode::Comments => {
+                                    // Search in cached comments (if available)
+                                    // For now, we don't have easy access to comments here
+                                    // This would require pre-fetching comments or maintaining a comment cache
+                                    // For v0.5.2, we'll just return false for comment-only search in list view
+                                    false
+                                }
+                                SearchMode::TitleAndComments => {
+                                    // In list view, we can only effectively search titles
+                                    title_match
+                                }
+                            }
                         })
                         .map(|(i, s)| (i, s.clone()))
                         .collect()
@@ -240,14 +255,18 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
         .collect();
 
     // Place the version next to the "Hacker News" label in the title
-    let title = match app.search_query.as_str() {
-        "" => format!(
+    let title = match app.search_query.is_empty() {
+        true => format!(
             "Hacker News v{} - {}",
             app.app_version, app.current_list_type
         ),
-        query => format!(
-            "Hacker News v{} - {} (Filter: {})",
-            app.app_version, app.current_list_type, query
+        false => format!(
+            "Hacker News v{} - {} (Filter: {} [{}|{}])",
+            app.app_version,
+            app.current_list_type,
+            app.search_query.query,
+            app.search_query.mode.as_str(),
+            app.search_query.search_type.as_str()
         ),
     };
 
@@ -681,15 +700,15 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
             format!("{} {}", spinner, desc)
         }
         (false, &InputMode::Search, _) => {
-            // Simplified status bar for search mode
-            "Search: Type to filter | Enter/Esc: Finish | Ctrl+C: Clear".to_string()
+            // Enhanced status bar for search mode with shortcuts
+            "Search: Type | ↑↓: History | Ctrl+M/F2: Mode | Ctrl+R/F3: Regex | Enter: OK | Esc: Cancel".to_string()
         }
         (false, _, &ViewMode::List) => {
             let loaded_info = match app.story_ids.len() {
                 0 => String::new(),
                 len => format!(" | {}/{}", app.loaded_count, len),
             };
-            let filter_hint = match app.search_query.as_str() {
+            let filter_hint = match app.search_query.query.as_str() {
                 "" => String::new(),
                 q => format!(" | Filter: {}", q),
             };
@@ -786,29 +805,47 @@ fn render_notification(app: &App, f: &mut Frame) {
 fn render_search_overlay(app: &App, f: &mut Frame) {
     let area = f.area();
 
-    // Create search box at the top center
-    let search_width = 60.min(area.width - 4);
-    let search_height = 3;
+    // Create search box at the top center - make it taller for more info
+    let search_width = 70.min(area.width - 4);
+    let search_height = 5;
 
     let search_x = (area.width.saturating_sub(search_width)) / 2;
-    let search_y = (area.height.saturating_sub(search_height)) / 2; // Centered vertically
+    let search_y = (area.height.saturating_sub(search_height)) / 2;
 
     let search_area = Rect::new(search_x, search_y, search_width, search_height);
 
-    // Display the search query with cursor
-    let display_text = format!("{}█", app.search_query); // █ as cursor
+    // Build title with mode and type indicators
+    let title = format!(
+        " Search: {} | {} ",
+        app.search_query.mode.as_str(),
+        app.search_query.search_type.as_str()
+    );
 
-    let search_box = Paragraph::new(display_text)
-        .style(
-            Style::default()
-                .fg(app.theme.foreground)
-                .bg(app.theme.background),
-        )
+    // Display the temp search input with cursor
+    let mut display_lines = vec![];
+
+    // Input line with cursor
+    let input_line = format!("{}█", app.temp_search_input);
+    display_lines.push(Line::from(Span::styled(
+        input_line,
+        Style::default().fg(app.theme.foreground),
+    )));
+
+    // Show regex error if present
+    if let Some(ref error) = app.search_query.regex_error {
+        display_lines.push(Line::from(Span::styled(
+            error.clone(),
+            Style::default().fg(app.theme.score), // Use score color (typically red/orange)
+        )));
+    }
+
+    let search_box = Paragraph::new(display_lines)
+        .style(Style::default().bg(app.theme.background))
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.selection_bg))
-                .title(" Search (Esc to cancel) ")
+                .title(title)
                 .title_style(
                     Style::default()
                         .fg(app.theme.selection_fg)
@@ -961,7 +998,7 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
         Line::from(vec![
             Span::raw("  "),
             Span::styled("X", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Clean hisoty"),
+            Span::raw("        Clear history (in History view)"),
         ]),
         Line::from(""),
         Line::from(vec![Span::styled(

@@ -64,6 +64,12 @@ src/
   - View history with `H` key
   - Clear history with `X` key
   - Persistent storage in `history.json`
+- **Enhanced Search** (v0.5.2)
+  - Regex search support toggle with `Ctrl+R` or `F3`
+  - Search modes: Title only, Comments only, or Both (cycle with `Ctrl+M` or `F2`)
+  - Search history navigation with `↑`/`↓` arrows
+  - Persistent search history (last 20 searches)
+  - Live regex error feedback
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments

@@ -31,6 +31,8 @@ pub enum ViewMode {
 pub enum InputMode {
     Normal,
     Search,
+    #[allow(dead_code)]
+    SearchOptions,
 }
 
 /// Actions/messages sent through the app action channel.
@@ -109,7 +111,10 @@ pub struct App {
     pub last_spinner_update: Option<tokio::time::Instant>,
     pub show_help: bool,
     pub input_mode: InputMode,
-    pub search_query: String,
+    pub search_query: crate::internal::search::SearchQuery,
+    pub search_history: crate::internal::search::SearchHistory,
+    pub temp_search_input: String,
+    pub history_index: Option<usize>,
     #[allow(dead_code)]
     pub config: AppConfig,
     pub action_tx: UnboundedSender<Action>,
@@ -222,7 +227,16 @@ impl App {
             last_spinner_update: None,
             show_help: false,
             input_mode: InputMode::Normal,
-            search_query: String::new(),
+            search_query: crate::internal::search::SearchQuery::default(),
+            search_history: match crate::internal::search::SearchHistory::load_or_create(20) {
+                Ok(h) => h,
+                Err(e) => {
+                    tracing::error!("Failed to load search history: {}", e);
+                    crate::internal::search::SearchHistory::new(20)
+                }
+            },
+            temp_search_input: String::new(),
+            history_index: None,
             config,
             action_tx,
             action_rx,
@@ -546,7 +560,7 @@ impl App {
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         match self.input_mode {
-            InputMode::Search => self.handle_search_input(key),
+            InputMode::Search | InputMode::SearchOptions => self.handle_search_input(key),
             InputMode::Normal => self.handle_normal_input(key),
         }
     }
@@ -556,14 +570,116 @@ impl App {
             KeyCode::Char('/') => {
                 // Ignore / in search mode (it's the key that enters search mode)
             }
+            KeyCode::Char('m')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                // Cycle search mode
+                self.search_query.mode = self.search_query.mode.next();
+            }
+            KeyCode::F(2) => {
+                // Also cycle search mode
+                self.search_query.mode = self.search_query.mode.next();
+            }
+            KeyCode::Char('r')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                // Toggle regex
+                self.search_query.search_type = self.search_query.search_type.toggle();
+                // Recompile with current temp input
+                self.search_query = crate::internal::search::SearchQuery::new(
+                    self.temp_search_input.clone(),
+                    self.search_query.mode,
+                    self.search_query.search_type,
+                );
+            }
+            KeyCode::F(3) => {
+                // Also toggle regex
+                self.search_query.search_type = self.search_query.search_type.toggle();
+                self.search_query = crate::internal::search::SearchQuery::new(
+                    self.temp_search_input.clone(),
+                    self.search_query.mode,
+                    self.search_query.search_type,
+                );
+            }
+            KeyCode::Up => {
+                // Navigate history up (older)
+                let current = self.history_index.unwrap_or(0);
+                if current < self.search_history.queries.len().saturating_sub(1) {
+                    let new_index = current + 1;
+                    self.history_index = Some(new_index);
+                    if let Some(query) = self.search_history.get_recent(new_index) {
+                        self.temp_search_input = query.clone();
+                        self.search_query = crate::internal::search::SearchQuery::new(
+                            query.clone(),
+                            self.search_query.mode,
+                            self.search_query.search_type,
+                        );
+                    }
+                }
+            }
+            KeyCode::Down => {
+                // Navigate history down (newer)
+                if let Some(current) = self.history_index {
+                    if current > 0 {
+                        let new_index = current - 1;
+                        self.history_index = Some(new_index);
+                        if let Some(query) = self.search_history.get_recent(new_index) {
+                            self.temp_search_input = query.clone();
+                            self.search_query = crate::internal::search::SearchQuery::new(
+                                query.clone(),
+                                self.search_query.mode,
+                                self.search_query.search_type,
+                            );
+                        }
+                    } else {
+                        // At the bottom, clear to empty
+                        self.history_index = None;
+                        self.temp_search_input.clear();
+                        self.search_query = crate::internal::search::SearchQuery::new(
+                            String::new(),
+                            self.search_query.mode,
+                            self.search_query.search_type,
+                        );
+                    }
+                }
+            }
             KeyCode::Char(c) => {
-                self.search_query.push(c);
+                self.temp_search_input.push(c);
+                self.search_query = crate::internal::search::SearchQuery::new(
+                    self.temp_search_input.clone(),
+                    self.search_query.mode,
+                    self.search_query.search_type,
+                );
+                self.history_index = None;
             }
             KeyCode::Backspace => {
-                self.search_query.pop();
+                self.temp_search_input.pop();
+                self.search_query = crate::internal::search::SearchQuery::new(
+                    self.temp_search_input.clone(),
+                    self.search_query.mode,
+                    self.search_query.search_type,
+                );
+                self.history_index = None;
             }
-            KeyCode::Enter | KeyCode::Esc => {
+            KeyCode::Enter => {
+                // Save to history and exit search mode
+                if !self.temp_search_input.is_empty() {
+                    self.search_history.add(self.temp_search_input.clone());
+                    let _ = self.search_history.save();
+                }
                 self.input_mode = InputMode::Normal;
+                self.history_index = None;
+            }
+            KeyCode::Esc => {
+                // Cancel search - clear and exit
+                self.temp_search_input.clear();
+                self.search_query = crate::internal::search::SearchQuery::default();
+                self.input_mode = InputMode::Normal;
+                self.history_index = None;
             }
             _ => {}
         }
@@ -701,11 +817,14 @@ impl App {
             KeyCode::Char('/') => {
                 if self.view_mode == ViewMode::List {
                     self.input_mode = InputMode::Search;
+                    self.temp_search_input = self.search_query.query.clone();
+                    self.history_index = None;
                 }
             }
             KeyCode::Char('C') => {
                 if !self.search_query.is_empty() {
-                    self.search_query.clear();
+                    self.search_query = crate::internal::search::SearchQuery::default();
+                    self.temp_search_input.clear();
                 }
             }
             KeyCode::Char('n') => {
@@ -750,20 +869,18 @@ impl App {
                     // on that row even when a filter/search is active.
                     let displayed: Vec<_> = match self.search_query.is_empty() {
                         true => self.stories.iter().enumerate().collect(),
-                        false => {
-                            let query = self.search_query.to_lowercase();
-                            self.stories
-                                .iter()
-                                .enumerate()
-                                .filter(|(_, story)| {
-                                    story
-                                        .title
-                                        .as_ref()
-                                        .map(|t| t.to_lowercase().contains(&query))
-                                        .unwrap_or(false)
-                                })
-                                .collect()
-                        }
+                        false => self
+                            .stories
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, story)| {
+                                story
+                                    .title
+                                    .as_ref()
+                                    .map(|t| self.search_query.matches(t))
+                                    .unwrap_or(false)
+                            })
+                            .collect(),
                     };
 
                     if let Some((_, s)) = displayed.get(index).cloned() {
@@ -801,20 +918,18 @@ impl App {
                         // opens the URL for the story visible on that row when filtered.
                         let displayed: Vec<_> = match self.search_query.is_empty() {
                             true => self.stories.iter().enumerate().collect(),
-                            false => {
-                                let query = self.search_query.to_lowercase();
-                                self.stories
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, story)| {
-                                        story
-                                            .title
-                                            .as_ref()
-                                            .map(|t| t.to_lowercase().contains(&query))
-                                            .unwrap_or(false)
-                                    })
-                                    .collect()
-                            }
+                            false => self
+                                .stories
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, story)| {
+                                    story
+                                        .title
+                                        .as_ref()
+                                        .map(|t| self.search_query.matches(t))
+                                        .unwrap_or(false)
+                                })
+                                .collect(),
                         };
 
                         if let Some((_, story)) = displayed.get(index).cloned()
@@ -1418,20 +1533,18 @@ impl App {
     pub fn filtered_story_indices(&self) -> Vec<(usize, &Story)> {
         match self.search_query.is_empty() {
             true => self.stories.iter().enumerate().collect(),
-            false => {
-                let query = self.search_query.to_lowercase();
-                self.stories
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, story)| {
-                        story
-                            .title
-                            .as_ref()
-                            .map(|t| t.to_lowercase().contains(&query))
-                            .unwrap_or(false)
-                    })
-                    .collect()
-            }
+            false => self
+                .stories
+                .iter()
+                .enumerate()
+                .filter(|(_, story)| {
+                    story
+                        .title
+                        .as_ref()
+                        .map(|t| self.search_query.matches(t))
+                        .unwrap_or(false)
+                })
+                .collect(),
         }
     }
 
@@ -1495,6 +1608,9 @@ impl App {
             _ => None,
         }
     }
+
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {}
 
     pub fn ui(&mut self, f: &mut Frame) {
         super::view::draw(self, f);
