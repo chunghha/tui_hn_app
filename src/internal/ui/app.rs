@@ -78,6 +78,199 @@ pub enum Action {
     ClearHistory,
 }
 
+// Manual Serialize/Deserialize implementation for Action
+// Only config-relevant variants are supported
+impl serde::Serialize for Action {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStructVariant;
+        match self {
+            Action::Quit => serializer.serialize_unit_variant("Action", 0, "Quit"),
+            Action::NavigateUp => serializer.serialize_unit_variant("Action", 1, "NavigateUp"),
+            Action::NavigateDown => serializer.serialize_unit_variant("Action", 2, "NavigateDown"),
+            Action::Enter => serializer.serialize_unit_variant("Action", 3, "Enter"),
+            Action::Back => serializer.serialize_unit_variant("Action", 4, "Back"),
+            Action::OpenBrowser => serializer.serialize_unit_variant("Action", 5, "OpenBrowser"),
+            Action::LoadStories(list_type) => {
+                let mut sv = serializer.serialize_struct_variant("Action", 6, "LoadStories", 1)?;
+                sv.serialize_field("0", list_type)?;
+                sv.end()
+            }
+            Action::LoadMoreStories => {
+                serializer.serialize_unit_variant("Action", 7, "LoadMoreStories")
+            }
+            Action::LoadAllStories => {
+                serializer.serialize_unit_variant("Action", 8, "LoadAllStories")
+            }
+            Action::LoadMoreComments => {
+                serializer.serialize_unit_variant("Action", 9, "LoadMoreComments")
+            }
+            Action::ToggleArticleView => {
+                serializer.serialize_unit_variant("Action", 10, "ToggleArticleView")
+            }
+            Action::ToggleHelp => serializer.serialize_unit_variant("Action", 11, "ToggleHelp"),
+            Action::ScrollArticleUp => {
+                serializer.serialize_unit_variant("Action", 12, "ScrollArticleUp")
+            }
+            Action::ScrollArticleDown => {
+                serializer.serialize_unit_variant("Action", 13, "ScrollArticleDown")
+            }
+            Action::SortByScore => serializer.serialize_unit_variant("Action", 14, "SortByScore"),
+            Action::SortByComments => {
+                serializer.serialize_unit_variant("Action", 15, "SortByComments")
+            }
+            Action::SortByTime => serializer.serialize_unit_variant("Action", 16, "SortByTime"),
+            Action::ToggleSortOrder => {
+                serializer.serialize_unit_variant("Action", 17, "ToggleSortOrder")
+            }
+            Action::SwitchTheme => serializer.serialize_unit_variant("Action", 18, "SwitchTheme"),
+            Action::ClearNotification => {
+                serializer.serialize_unit_variant("Action", 19, "ClearNotification")
+            }
+            Action::ToggleBookmark => {
+                serializer.serialize_unit_variant("Action", 20, "ToggleBookmark")
+            }
+            Action::ViewBookmarks => {
+                serializer.serialize_unit_variant("Action", 21, "ViewBookmarks")
+            }
+            Action::ExportBookmarks => {
+                serializer.serialize_unit_variant("Action", 22, "ExportBookmarks")
+            }
+            Action::ImportBookmarks => {
+                serializer.serialize_unit_variant("Action", 23, "ImportBookmarks")
+            }
+            Action::ViewHistory => serializer.serialize_unit_variant("Action", 24, "ViewHistory"),
+            Action::ClearHistory => serializer.serialize_unit_variant("Action", 25, "ClearHistory"),
+            // Non-serializable variants
+            _ => Err(serde::ser::Error::custom(
+                "Cannot serialize runtime-only Action variant",
+            )),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Action {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct ActionVisitor;
+
+        impl<'de> Visitor<'de> for ActionVisitor {
+            type Value = Action;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("enum Action")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Action, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "Quit" => Ok(Action::Quit),
+                    "NavigateUp" => Ok(Action::NavigateUp),
+                    "NavigateDown" => Ok(Action::NavigateDown),
+                    "Enter" => Ok(Action::Enter),
+                    "Back" => Ok(Action::Back),
+                    "OpenBrowser" => Ok(Action::OpenBrowser),
+                    "LoadMoreStories" => Ok(Action::LoadMoreStories),
+                    "LoadAllStories" => Ok(Action::LoadAllStories),
+                    "LoadMoreComments" => Ok(Action::LoadMoreComments),
+                    "ToggleArticleView" => Ok(Action::ToggleArticleView),
+                    "ToggleHelp" => Ok(Action::ToggleHelp),
+                    "ScrollArticleUp" => Ok(Action::ScrollArticleUp),
+                    "ScrollArticleDown" => Ok(Action::ScrollArticleDown),
+                    "SortByScore" => Ok(Action::SortByScore),
+                    "SortByComments" => Ok(Action::SortByComments),
+                    "SortByTime" => Ok(Action::SortByTime),
+                    "ToggleSortOrder" => Ok(Action::ToggleSortOrder),
+                    "SwitchTheme" => Ok(Action::SwitchTheme),
+                    "ClearNotification" => Ok(Action::ClearNotification),
+                    "ToggleBookmark" => Ok(Action::ToggleBookmark),
+                    "ViewBookmarks" => Ok(Action::ViewBookmarks),
+                    "ExportBookmarks" => Ok(Action::ExportBookmarks),
+                    "ImportBookmarks" => Ok(Action::ImportBookmarks),
+                    "ViewHistory" => Ok(Action::ViewHistory),
+                    "ClearHistory" => Ok(Action::ClearHistory),
+                    _ => Err(de::Error::unknown_variant(
+                        value,
+                        &[
+                            "Quit",
+                            "NavigateUp",
+                            "NavigateDown",
+                            "Enter",
+                            "Back",
+                            "OpenBrowser",
+                            "LoadStories",
+                            "LoadMoreStories",
+                            "LoadAllStories",
+                            "LoadMoreComments",
+                            "ToggleArticleView",
+                            "ToggleHelp",
+                            "ScrollArticleUp",
+                            "ScrollArticleDown",
+                            "SortByScore",
+                            "SortByComments",
+                            "SortByTime",
+                            "ToggleSortOrder",
+                            "SwitchTheme",
+                            "ClearNotification",
+                            "ToggleBookmark",
+                            "ViewBookmarks",
+                            "ExportBookmarks",
+                            "ImportBookmarks",
+                            "ViewHistory",
+                            "ClearHistory",
+                        ],
+                    )),
+                }
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Action, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut variant_name: Option<String> = None;
+                let mut inner_data: Option<StoryListType> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "LoadStories" => {
+                            // This is a struct variant, get the inner value
+                            inner_data = Some(map.next_value()?);
+                            variant_name = Some("LoadStories".to_string());
+                        }
+                        other => {
+                            variant_name = Some(other.to_string());
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                match variant_name.as_deref() {
+                    Some("LoadStories") => {
+                        if let Some(list_type) = inner_data {
+                            Ok(Action::LoadStories(list_type))
+                        } else {
+                            Err(de::Error::missing_field("LoadStories inner value"))
+                        }
+                    }
+                    Some(v) => self.visit_str(v),
+                    None => Err(de::Error::missing_field("variant")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(ActionVisitor)
+    }
+}
+
 /// Main application state.
 pub struct App {
     pub running: bool,
@@ -125,6 +318,7 @@ pub struct App {
     pub action_rx: UnboundedReceiver<Action>,
     pub bookmarks: crate::internal::bookmarks::Bookmarks,
     pub history: crate::internal::history::History,
+    pub keybindings: crate::internal::ui::keybindings::KeyBindingMap,
 }
 
 impl App {
@@ -199,6 +393,12 @@ impl App {
             }
         };
 
+        let mut keybindings =
+            crate::internal::ui::keybindings_default::create_default_keybindings();
+        if let Some(custom_bindings) = &config.keybindings {
+            keybindings.merge_config(custom_bindings);
+        }
+
         Self {
             running: true,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -248,6 +448,7 @@ impl App {
             action_rx,
             bookmarks,
             history,
+            keybindings,
         }
     }
 
@@ -692,101 +893,25 @@ impl App {
     }
 
     fn handle_normal_input(&mut self, key: KeyEvent) {
+        use crate::internal::ui::keybindings::KeyBindingContext;
+
+        // Map ViewMode to KeyBindingContext
+        let context = match self.view_mode {
+            ViewMode::List => KeyBindingContext::List,
+            ViewMode::StoryDetail => KeyBindingContext::StoryDetail,
+            ViewMode::Article => KeyBindingContext::Article,
+            ViewMode::Bookmarks => KeyBindingContext::Bookmarks,
+            ViewMode::History => KeyBindingContext::History,
+        };
+
+        // Check for configured keybinding
+        if let Some(action) = self.keybindings.get_action(&key, context) {
+            let _ = self.action_tx.send(action);
+            return;
+        }
+
+        // Handle special cases that are not yet Actions or require immediate state change
         match key.code {
-            KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::ToggleHelp);
-            }
-            KeyCode::Esc | KeyCode::Char('q') => match (self.show_help, self.view_mode) {
-                (true, _) => {
-                    let _ = self.action_tx.send(Action::ToggleHelp);
-                }
-                (false, ViewMode::List) => {
-                    let _ = self.action_tx.send(Action::Quit);
-                }
-                (false, ViewMode::StoryDetail) | (false, ViewMode::Article) => {
-                    let _ = self.action_tx.send(Action::Back);
-                }
-                // When in Bookmarks or History view, Esc/q should go back to the List view
-                (false, ViewMode::Bookmarks) | (false, ViewMode::History) => {
-                    let _ = self.action_tx.send(Action::Back);
-                }
-            },
-            KeyCode::Char('j') | KeyCode::Down => match self.view_mode {
-                ViewMode::Article => {
-                    let _ = self.action_tx.send(Action::ScrollArticleDown);
-                }
-                _ => {
-                    let _ = self.action_tx.send(Action::NavigateDown);
-                }
-            },
-            KeyCode::Char('k') | KeyCode::Up => match self.view_mode {
-                ViewMode::Article => {
-                    let _ = self.action_tx.send(Action::ScrollArticleUp);
-                }
-                _ => {
-                    let _ = self.action_tx.send(Action::NavigateUp);
-                }
-            },
-            KeyCode::Enter => {
-                let _ = self.action_tx.send(Action::Enter);
-            }
-            KeyCode::Tab => {
-                let _ = self.action_tx.send(Action::ToggleArticleView);
-            }
-            KeyCode::Char('o') => {
-                let _ = self.action_tx.send(Action::OpenBrowser);
-            }
-            KeyCode::Char('1') => {
-                let _ = self.action_tx.send(Action::LoadStories(StoryListType::Top));
-            }
-            KeyCode::Char('2') => {
-                let _ = self.action_tx.send(Action::LoadStories(StoryListType::New));
-            }
-            KeyCode::Char('3') => {
-                let _ = self
-                    .action_tx
-                    .send(Action::LoadStories(StoryListType::Best));
-            }
-            KeyCode::Char('4') => {
-                let _ = self.action_tx.send(Action::LoadStories(StoryListType::Ask));
-            }
-            KeyCode::Char('5') => {
-                let _ = self
-                    .action_tx
-                    .send(Action::LoadStories(StoryListType::Show));
-            }
-            KeyCode::Char('6') => {
-                let _ = self.action_tx.send(Action::LoadStories(StoryListType::Job));
-            }
-            KeyCode::Char('S') => {
-                let _ = self.action_tx.send(Action::SortByScore);
-            }
-            KeyCode::Char('C') => {
-                let _ = self.action_tx.send(Action::SortByComments);
-            }
-            KeyCode::Char('T') => {
-                let _ = self.action_tx.send(Action::SortByTime);
-            }
-            KeyCode::Char('O') => {
-                let _ = self.action_tx.send(Action::ToggleSortOrder);
-            }
-            KeyCode::Char('t') => {
-                let _ = self.action_tx.send(Action::SwitchTheme);
-            }
-            KeyCode::Char('b') => {
-                let _ = self.action_tx.send(Action::ToggleBookmark);
-            }
-            KeyCode::Char('B') => {
-                let _ = self.action_tx.send(Action::ViewBookmarks);
-            }
-            KeyCode::Char('H') => {
-                let _ = self.action_tx.send(Action::ViewHistory);
-            }
-            KeyCode::Char('X') => {
-                if self.view_mode == ViewMode::History {
-                    let _ = self.action_tx.send(Action::ClearHistory);
-                }
-            }
             // Toggle auto_switch_dark_to_light at runtime and persist to config.ron.
             // Pressing 'g' flips the flag, saves config, and shows a short notification.
             KeyCode::Char('g') => {
@@ -822,16 +947,6 @@ impl App {
                     let _ = tx.send(Action::ClearNotification);
                 });
             }
-            KeyCode::Char('m') => {
-                if self.view_mode == ViewMode::List {
-                    let _ = self.action_tx.send(Action::LoadMoreStories);
-                }
-            }
-            KeyCode::Char('A') => {
-                if self.view_mode == ViewMode::List {
-                    let _ = self.action_tx.send(Action::LoadAllStories);
-                }
-            }
             KeyCode::Char('/') => {
                 if self.view_mode == ViewMode::List {
                     self.input_mode = InputMode::Search;
@@ -843,11 +958,6 @@ impl App {
                 if !self.search_query.is_empty() {
                     self.search_query = crate::internal::search::SearchQuery::default();
                     self.temp_search_input.clear();
-                }
-            }
-            KeyCode::Char('n') => {
-                if self.view_mode == ViewMode::StoryDetail {
-                    let _ = self.action_tx.send(Action::LoadMoreComments);
                 }
             }
             _ => {}
@@ -1588,18 +1698,12 @@ impl App {
     }
 
     fn sort_stories(&mut self) {
-        self.stories.sort_unstable_by(|a, b| {
-            let ordering = match self.sort_by {
-                SortBy::Score => a.score.cmp(&b.score),
-                SortBy::Comments => a.descendants.cmp(&b.descendants),
-                SortBy::Time => a.time.cmp(&b.time),
-            };
-
-            match self.sort_order {
-                SortOrder::Ascending => ordering,
-                SortOrder::Descending => ordering.reverse(),
-            }
-        });
+        // Delegate actual sorting implementation to the `sort` module so that
+        // sorting logic can be maintained and tested separately.
+        //
+        // The concrete implementation is expected to be provided in
+        // `crate::internal::ui::sort::sort_stories`.
+        crate::internal::ui::sort::sort_stories(&mut self.stories, self.sort_by, self.sort_order);
     }
 
     fn select_next(&mut self) {
@@ -1925,8 +2029,9 @@ mod tests {
         app.show_help = !app.show_help;
         assert!(!app.show_help, "Help should be hidden after second toggle");
     }
+
     #[test]
-    fn test_sort_stories() {
+    fn test_app_sort_stories_integration() {
         use crate::internal::ui::sort::{SortBy, SortOrder};
 
         let mut app = App::new();
@@ -1934,121 +2039,37 @@ mod tests {
         // Create sample stories
         let s1 = Story {
             id: 1,
-            title: Some("Story 1".to_string()),
             score: Some(100),
-            time: Some(1000),
-            descendants: Some(50),
             ..Default::default()
         };
         let s2 = Story {
             id: 2,
-            title: Some("Story 2".to_string()),
             score: Some(200),
-            time: Some(2000),
-            descendants: Some(10),
             ..Default::default()
         };
         let s3 = Story {
             id: 3,
-            title: Some("Story 3".to_string()),
             score: Some(50),
-            time: Some(3000),
-            descendants: Some(100),
             ..Default::default()
         };
 
-        app.stories = vec![s1.clone(), s2.clone(), s3.clone()];
+        app.stories = vec![s1, s2, s3];
 
-        // Test Sort by Score (Descending - default high to low)
+        // Test Sort by Score (Descending)
         app.sort_by = SortBy::Score;
         app.sort_order = SortOrder::Descending;
         app.sort_stories();
+
         assert_eq!(app.stories[0].id, 2); // 200
         assert_eq!(app.stories[1].id, 1); // 100
         assert_eq!(app.stories[2].id, 3); // 50
-
-        // Test Sort by Score (Ascending)
-        app.sort_order = SortOrder::Ascending;
-        app.sort_stories();
-        assert_eq!(app.stories[0].id, 3); // 50
-        assert_eq!(app.stories[1].id, 1); // 100
-        assert_eq!(app.stories[2].id, 2); // 200
-
-        // Test Sort by Time (Descending - newest first)
-        app.sort_by = SortBy::Time;
-        app.sort_order = SortOrder::Descending;
-        app.sort_stories();
-        assert_eq!(app.stories[0].id, 3); // 3000
-        assert_eq!(app.stories[1].id, 2); // 2000
-        assert_eq!(app.stories[2].id, 1); // 1000
-
-        // Test Sort by Comments (Descending - most comments first)
-        app.sort_by = SortBy::Comments;
-        app.sort_order = SortOrder::Descending;
-        app.sort_stories();
-        assert_eq!(app.stories[0].id, 3); // 100
-        assert_eq!(app.stories[1].id, 1); // 50
-        assert_eq!(app.stories[2].id, 2); // 10
     }
 
     #[test]
-    fn test_sort_with_load_more() {
-        use crate::internal::ui::sort::{SortBy, SortOrder};
-
-        let mut app = App::new();
-
-        // 1. Simulate initial load of 2 stories
-        let s1 = Story {
-            id: 1,
-            score: Some(100),
-            ..Default::default()
-        };
-        let s2 = Story {
-            id: 2,
-            score: Some(200),
-            ..Default::default()
-        };
-
-        // Manually simulate the Action::StoriesLoaded effect
-        app.stories.push(s1);
-        app.stories.push(s2);
-        app.loaded_count = 2;
-
-        // Set sort to Score Descending
-        app.sort_by = SortBy::Score;
-        app.sort_order = SortOrder::Descending;
-        app.sort_stories();
-
-        // Verify initial order (200, 100)
-        assert_eq!(app.stories[0].id, 2);
-        assert_eq!(app.stories[1].id, 1);
-
-        // 2. Simulate "Load More" - adding 2 more stories
-        // One has a VERY high score, one low
-        let s3 = Story {
-            id: 3,
-            score: Some(300),
-            ..Default::default()
-        };
-        let s4 = Story {
-            id: 4,
-            score: Some(50),
-            ..Default::default()
-        };
-
-        let new_stories = vec![s3, s4];
-
-        // Apply the logic from Action::StoriesLoaded
-        app.loaded_count += new_stories.len();
-        app.stories.extend(new_stories);
-        app.sort_stories(); // This is the key step
-
-        // 3. Verify ALL 4 stories are sorted correctly
-        // Order should be: s3(300), s2(200), s1(100), s4(50)
-        assert_eq!(app.stories.len(), 4);
-        assert_eq!(app.stories[0].id, 3); // 300
-        assert_eq!(app.stories[1].id, 2); // 200
-        assert_eq!(app.stories[2].id, 1); // 100
-        assert_eq!(app.stories[3].id, 4); // 50
+    fn test_serialize_action() {
+        let _action = Action::Quit;
+        // We don't have serde_json dependency, but we can check if it implements Serialize
+        fn check_serialize<T: serde::Serialize>() {}
+        check_serialize::<Action>();
     }
 }

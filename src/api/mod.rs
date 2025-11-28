@@ -4,11 +4,12 @@ use crate::utils::html_parser::parse_article_html;
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use strum_macros::Display;
 
 /// Types of Hacker News story lists we can fetch.
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Serialize, Deserialize)]
 pub enum StoryListType {
     Best,
     Top,

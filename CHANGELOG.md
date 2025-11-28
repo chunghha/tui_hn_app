@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-11-28
+
+### Added
+- **Key Binding Customization**: Full support for custom keybindings via `config.ron`
+  - Define custom key mappings for all actions
+  - Global and per-view mode keybindings (List, StoryDetail, Article, Bookmarks, History)
+  - Hierarchical resolution: context-specific bindings override global bindings
+  - Support for simple keys, special keys (Enter, Esc, Tab, etc.), and modifiers (Ctrl, Shift, Alt)
+  - Examples and full documentation in `config.example.ron`
+- Unit tests for keybinding resolution and parsing
+
+### Changed
+- Refactored `handle_normal_input()` to use keybinding system instead of hardcoded match statements
+- Fixed regression: `q`/`Esc` now correctly quit in List view (was incorrectly going back)
+
+### Technical
+- Added `keybindings` module with `KeyBindingMap` and `KeyBindingContext`
+- Added `keybindings_default` module with centralized default keybindings
+- Custom `Serialize`/`Deserialize` implementation for `Action` enum
+- Added `KeyBindingConfig` to `AppConfig` for config file support
+- Added `Serialize`/`Deserialize` to `StoryListType` enum
+
 ## [0.5.3] - 2025-11-28
 
 ### Added

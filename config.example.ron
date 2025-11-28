@@ -23,4 +23,33 @@
     // pressing the 'g' key will toggle `auto_switch_dark_to_light` on/off at runtime.
     // If your build does not include the runtime toggle, edit the value above in
     // `config.ron` and restart the application to change behavior.
+    // Keybindings configuration
+    // Available actions:
+    // Quit, Back, Enter, NavigateUp, NavigateDown, OpenBrowser,
+    // LoadStories(Top|New|Best|Ask|Show|Job), LoadMoreStories, LoadAllStories,
+    // ToggleArticleView, ToggleHelp, SortByScore, SortByComments, SortByTime,
+    // ToggleSortOrder, SwitchTheme, ToggleBookmark, ViewBookmarks, ViewHistory, ClearHistory
+    //
+    // Key format: "c", "Ctrl+c", "Shift+Tab", "Enter", "Esc", "Up", "Down"
+    //
+    // keybindings: (
+    //     global: {
+    //         "q": Back,
+    //         "?": ToggleHelp,
+    //         "j": NavigateDown,
+    //         "k": NavigateUp,
+    //     },
+    //     list: {
+    //         "Enter": Enter,
+    //         "m": LoadMoreStories,
+    //         "q": Quit, // Override global 'Back' to 'Quit' in list view
+    //     },
+    //     story_detail: {
+    //         "Tab": ToggleArticleView,
+    //     },
+    //     article: {
+    //         "j": ScrollArticleDown,
+    //         "k": ScrollArticleUp,
+    //     },
+    // ),
 )

@@ -3,6 +3,25 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use crate::internal::ui::app::Action;
+use std::collections::HashMap;
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct KeyBindingConfig {
+    #[serde(default)]
+    pub global: HashMap<String, Action>,
+    #[serde(default)]
+    pub list: HashMap<String, Action>,
+    #[serde(default)]
+    pub story_detail: HashMap<String, Action>,
+    #[serde(default)]
+    pub article: HashMap<String, Action>,
+    #[serde(default)]
+    pub bookmarks: HashMap<String, Action>,
+    #[serde(default)]
+    pub history: HashMap<String, Action>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct AppConfig {
@@ -23,6 +42,9 @@ pub struct AppConfig {
     /// of being auto-switched. Defaults to \"xterm-ghostty\".
     #[serde(default = "default_ghost_term_name")]
     pub ghost_term_name: String,
+    /// Custom keybindings
+    #[serde(default)]
+    pub keybindings: Option<KeyBindingConfig>,
 }
 
 fn default_theme_name() -> String {
@@ -48,6 +70,7 @@ impl Default for AppConfig {
             theme_file: default_theme_file(),
             auto_switch_dark_to_light: default_auto_switch_dark_to_light(),
             ghost_term_name: default_ghost_term_name(),
+            keybindings: None,
         }
     }
 }

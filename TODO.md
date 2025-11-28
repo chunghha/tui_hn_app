@@ -89,9 +89,11 @@
   - Ascending/descending toggle
 
 ### Configuration & Customization
-- [ ] **Key Binding Customization**: Allow users to remap keys in config.ron
+- [x] **Key Binding Customization**: Allow users to remap keys in config.ron
+  - ✅ Implemented in v0.6.0
   - Define custom keybindings per view mode
-  - Conflict detection
+  - Global and context-specific bindings with hierarchical resolution
+  - Conflict detection (optional future enhancement)
 
 - [ ] **UI Customization**: More configurable UI elements
   - Adjustable padding/margins
@@ -169,20 +171,45 @@ Based on current codebase maturity, I recommend prioritizing:
   - Toggle bookmark with `b` key
   - Bookmark indicators (★) in story list
 
-### 🚀 v0.5.x Series (Future)
+### 🚀 v0.5.x Series (Completed)
 
-#### v0.5.1 - History Tracking (Completed)
+#### v0.5.1 - History Tracking (Completed - 2025-11-28)
 - ✅ Track recently viewed stories
 - ✅ Clear history option
 
-### 🎯 v0.6.0+ (Future)
-- Search enhancements (comments, regex)
-- Sorting options (by score, time, comments)
-- Key binding customization
-- UI customization options
+#### v0.5.2 - Enhanced Search (Completed - 2025-11-28)
+- ✅ Regex search support
+- ✅ Search mode switching (Title/Comments/Both)
+- ✅ Search history navigation
+- ✅ Persistent search history
+
+#### v0.5.3 - Sorting Options (Completed - 2025-11-28)
+- ✅ Sort by Score, Comments, or Time
+- ✅ Ascending/Descending toggle
+- ✅ Visual sort indicator in list title
+
+### 🎯 v0.6.0 Series (In Progress)
+
+#### v0.6.0 - Key Binding Customization
+- [ ] Define custom keybindings in config.ron
+- [ ] Per-view mode keybindings
+- [ ] Conflict detection
+- [ ] Default keybinding fallback
+
+#### v0.6.1 - UI Customization
+- [ ] Adjustable padding/margins
+- [ ] Customizable status bar format
+- [ ] List view format customization (show/hide fields)
+- [ ] Configurable colors for UI elements
+
+#### v0.6.2 - Theme Editor (Optional)
+- [ ] Interactive theme builder
+- [ ] Preview theme changes in real-time
+- [ ] Export custom themes
 
 ### 🏁 v1.0.0 (Stable)
 - Complete feature parity with web interface
 - Comprehensive test coverage
 - Performance optimizations
 - All accessibility features
+

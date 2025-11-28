@@ -73,6 +73,10 @@ src/
 - **Sorting Options** (v0.5.3)
   - Sort by Score, Comments, or Time
   - Toggle Ascending/Descending order
+- **Key Binding Customization** (v0.6.0)
+  - Customize keybindings via `config.ron`
+  - Global and per-view mode keybindings
+  - Context-aware key resolution
 - Incremental loading with "Load More" and "Load All" behaviors
 - **Comment threading** with visual hierarchy
   - Indented nested comments
@@ -101,9 +105,10 @@ Important config keys:
 - `theme_file` — path to themes directory or specific theme JSON.
 - `auto_switch_dark_to_light` — automatic theme switching based on terminal.
 - `ghost_term_name` — terminal name override for theme switching.
+- `keybindings` — custom key mappings (optional, see `config.example.ron` for examples).
 
 Example (abbreviated):
-```text
+```ron
 (
     // Minimal configuration — only keys consumed by the application code.
     // Preferred theme name to apply (must match a theme defined in your theme files)
@@ -121,6 +126,17 @@ Example (abbreviated):
     // where explicit Dark/Light variants in `theme_name` are honored verbatim.
     // Defaults to "xterm-ghostty".
     ghost_term_name: "xterm-ghostty",
+
+    // Optional: Custom keybindings (uncomment and customize as needed)
+    // keybindings: (
+    //     global: {
+    //         "j": NavigateDown,
+    //         "k": NavigateUp,
+    //     },
+    //     list: {
+    //         "q": Quit,
+    //     },
+    // ),
 )
 ```
 
