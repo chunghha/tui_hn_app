@@ -76,6 +76,10 @@ pub enum Action {
     ImportBookmarks,
     ViewHistory,
     ClearHistory,
+    #[allow(dead_code)]
+    ToggleThemeEditor,
+    #[allow(dead_code)]
+    ExportTheme(String),
 }
 
 // Manual Serialize/Deserialize implementation for Action
@@ -319,6 +323,7 @@ pub struct App {
     pub bookmarks: crate::internal::bookmarks::Bookmarks,
     pub history: crate::internal::history::History,
     pub keybindings: crate::internal::ui::keybindings::KeyBindingMap,
+    pub theme_editor: crate::internal::ui::theme_editor::ThemeEditor,
 }
 
 impl App {
@@ -423,7 +428,7 @@ impl App {
             article_for_story_id: None,
             article_loading: false,
             article_scroll: 0,
-            theme,
+            theme: theme.clone(),
             available_themes,
             current_theme_index,
             terminal_mode,
@@ -449,6 +454,7 @@ impl App {
             bookmarks,
             history,
             keybindings,
+            theme_editor: crate::internal::ui::theme_editor::ThemeEditor::new(theme.clone()),
         }
     }
 
@@ -1021,6 +1027,31 @@ impl App {
                         let _ = self
                             .action_tx
                             .send(Action::SelectStory(story, self.current_list_type));
+                    }
+                }
+            }
+            Action::ClearHistory => {
+                if self.view_mode == ViewMode::History {
+                    self.history.clear();
+                    let _ = self.history.save();
+                }
+            }
+            Action::ToggleThemeEditor => {
+                self.theme_editor.toggle(&self.theme);
+            }
+            Action::ExportTheme(name) => {
+                // Export current theme from theme editor
+                if self.theme_editor.active {
+                    match self.export_theme_to_file(&name) {
+                        Ok(path) => {
+                            self.notification_message =
+                                Some(format!("Theme saved to {}", path.display()));
+                            self.notification_timer = Some(tokio::time::Instant::now());
+                        }
+                        Err(e) => {
+                            self.notification_message = Some(format!("Error saving theme: {}", e));
+                            self.notification_timer = Some(tokio::time::Instant::now());
+                        }
                     }
                 }
             }
@@ -1651,19 +1682,6 @@ impl App {
                 self.view_mode = ViewMode::History;
                 self.story_list_state.select(Some(0));
             }
-            Action::ClearHistory => {
-                self.history.clear();
-                let _ = self.history.save();
-                self.notification_message = Some("History cleared".to_string());
-                self.notification_timer = Some(tokio::time::Instant::now());
-
-                // Schedule notification clear after a short delay (keep behavior consistent with other notifications)
-                let tx = self.action_tx.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                    let _ = tx.send(Action::ClearNotification);
-                });
-            }
             Action::ClearNotification => {
                 self.notification_message = None;
                 self.notification_timer = None;
@@ -1695,6 +1713,63 @@ impl App {
                 })
                 .collect(),
         }
+    }
+
+    fn export_theme_to_file(&self, name: &str) -> anyhow::Result<std::path::PathBuf> {
+        use std::collections::HashMap;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let theme = &self.theme_editor.temp_theme;
+
+        // Helper to convert Color to hex string
+        let color_to_hex = |color: ratatui::style::Color| -> String {
+            match color {
+                ratatui::style::Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
+                _ => "#000000".to_string(),
+            }
+        };
+
+        // Create theme JSON structure
+        let mut colors = HashMap::new();
+        colors.insert("background".to_string(), color_to_hex(theme.background));
+        colors.insert("foreground".to_string(), color_to_hex(theme.foreground));
+        colors.insert(
+            "selection.background".to_string(),
+            color_to_hex(theme.selection_bg),
+        );
+        colors.insert(
+            "accent.foreground".to_string(),
+            color_to_hex(theme.selection_fg),
+        );
+        colors.insert("border".to_string(), color_to_hex(theme.border));
+        colors.insert("base.blue".to_string(), color_to_hex(theme.link));
+        colors.insert("base.yellow".to_string(), color_to_hex(theme.score));
+        colors.insert(
+            "muted.foreground".to_string(),
+            color_to_hex(theme.comment_time),
+        );
+
+        let theme_data = serde_json::json!({
+            "name": name,
+            "themes": [{
+                "name": format!("{} Custom", name),
+                "mode": "dark",
+                "colors": colors
+            }]
+        });
+
+        // Ensure themes directory exists
+        let themes_dir = PathBuf::from("./themes");
+        fs::create_dir_all(&themes_dir)?;
+
+        let filename = format!("{}_custom.json", name.to_lowercase().replace(' ', "_"));
+        let path = themes_dir.join(&filename);
+
+        let json = serde_json::to_string_pretty(&theme_data)?;
+        fs::write(&path, json)?;
+
+        Ok(path)
     }
 
     fn sort_stories(&mut self) {

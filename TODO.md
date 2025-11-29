@@ -101,9 +101,11 @@
   - Customizable status bar format (structure in place, token parsing TBD)
   - List view format customization (structure in place, rendering logic TBD)
 
-- [ ] **Theme Editor**: Interactive theme builder
-  - Preview theme changes in real-time
-  - Export custom themes
+- [/] **Theme Editor**: Interactive theme builder
+  - ✅ Implemented in v0.6.2 (infrastructure only)
+  - Theme editor module with color manipulation
+  - Export custom themes to JSON
+  - Interactive UI overlay (deferred to v0.6.3)
 
 ### Technical Improvements
 - [ ] **Error Handling**: Better user-facing error messages
@@ -189,24 +191,40 @@ Based on current codebase maturity, I recommend prioritizing:
 - ✅ Ascending/Descending toggle
 - ✅ Visual sort indicator in list title
 
-### 🎯 v0.6.0 Series (In Progress)
+### 🎯 v0.6.x Series - Configuration & Customization (In Progress)
 
-#### v0.6.0 - Key Binding Customization
-- [ ] Define custom keybindings in config.ron
-- [ ] Per-view mode keybindings
-- [ ] Conflict detection
-- [ ] Default keybinding fallback
+#### v0.6.0 - Key Binding Customization (Completed - 2025-11-28)
+- ✅ Define custom keybindings in config.ron
+- ✅ Per-view mode keybindings (Global, List, StoryDetail, Article, Bookmarks, History)
+- ✅ Hierarchical resolution (context-specific overrides global)
+- ✅ Default keybinding fallback
+- ⏭️ Conflict detection (optional future enhancement)
+- ✅ Documentation in config.example.ron
 
-#### v0.6.1 - UI Customization
-- [ ] Adjustable padding/margins
-- [ ] Customizable status bar format
-- [ ] List view format customization (show/hide fields)
-- [ ] Configurable colors for UI elements
+#### v0.6.1 - UI Customization (Completed - 2025-11-28)
+- ✅ Adjustable padding/margins (horizontal/vertical)
+- ✅ Configuration structures for future features
+- ⏭️ Customizable status bar format (structure in place, token parsing deferred)
+- ⏭️ List view format customization (structure in place, rendering logic deferred)
 
-#### v0.6.2 - Theme Editor (Optional)
-- [ ] Interactive theme builder
-- [ ] Preview theme changes in real-time
-- [ ] Export custom themes
+#### v0.6.2 - Theme Editor Infrastructure (Completed - 2025-11-28)
+- ✅ Theme editor module with state management
+- ✅ Color property navigation and RGB manipulation
+- ✅ Export custom themes to JSON
+- ✅ Action system integration (ToggleThemeEditor, ExportTheme)
+- ⏭️ Interactive UI overlay (deferred to v0.6.3)
+
+#### v0.6.3 - Theme Editor UI (Planned)
+- [ ] Interactive theme editor overlay
+- [ ] Color picker widget with RGB sliders
+- [ ] Real-time theme preview
+- [ ] Keyboard shortcuts ('E' to toggle, arrows to navigate)
+- [ ] Live property editing with instant feedback
+
+#### v0.6.4 - UI Customization Completion (Planned)
+- [ ] Status bar format token parsing
+- [ ] List view field visibility rendering
+- [ ] Complete remaining padding conversions (7 locations)
 
 ### 🏁 v1.0.0 (Stable)
 - Complete feature parity with web interface
