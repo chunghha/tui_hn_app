@@ -114,6 +114,13 @@
   - Auto-create directory if it doesn't exist
   - Currently hardcoded to `./themes/`
 
+- [ ] **Graceful Degradation**: Enhanced error resilience (Pre-1.0, deferred from v0.7.0)
+  - Story loading fallback → Show cached stories when network fails
+  - Comment loading fallback → Show placeholder for failed comments
+  - Article fetching fallback → Keep story view functional on fetch errors
+  - Configuration errors → Use sensible defaults
+  - File I/O errors → Graceful handling with user notifications
+
 ## 📝 Known Issues
 - [ ] Article scroll position doesn't always persist when toggling views
 - [ ] Long titles may wrap awkwardly in list view
@@ -213,17 +220,29 @@ Based on current codebase maturity, I recommend prioritizing:
 
 ### 🔧 v0.7.x - Technical Improvements Series
 
-#### v0.7.0 - Error Handling & Logging (Planned)
-- [ ] **Better Error Handling**: User-facing error messages
-  - Show network errors in notification
-  - Retry mechanism for failed requests
-  - Fallback strategies
-  - Graceful degradation for API failures
-- [ ] **Enhanced Logging**: Better tracing and debugging
-  - Log rotation configuration in config.ron
-  - Different log levels per module
-  - Optional log viewer in app (debug mode)
-  - Performance metrics logging
+#### v0.7.0 - Error Handling & Logging (Completed - 2025-11-29)
+- [x] **Enhanced Notifications**: User-facing error messages
+  - Color-coded notifications (Info/Warning/Error)
+  - Auto-dismiss with configurable timeouts
+  - Error display in overlay
+- [x] **Retry Mechanism**: Network resilience
+  - Exponential backoff for transient failures
+  - Configurable retry count and delays
+  - Smart retry only on network errors
+- [x] **Configurable Logging**: Flexible logging system
+  - Log level configuration per module
+  - Custom log directory support
+  - RUST_LOG environment variable override
+- [x] **Log Viewer**: In-app debug viewer
+  - Toggle with `L`
+  - Syntax highlighting for log levels
+  - Scrollable log history (last 1000 entries)
+- [x] **Performance Metrics**: Instrumented timing
+  - `#[tracing::instrument]` on key functions
+  - API request timing
+  - Theme loading timing
+  - Cache operation timing
+  - Conditional debug-only rendering metrics
 
 #### v0.7.1 - Testing & Quality (Planned)
 - [ ] **Expanded Test Coverage**

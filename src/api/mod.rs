@@ -55,18 +55,31 @@ pub struct ApiService {
     story_cache: Cache<u32, Story>,
     comment_cache: Cache<u32, Comment>,
     article_cache: Cache<String, Article>,
+    network_config: crate::config::NetworkConfig,
+    enable_performance_metrics: bool,
     #[cfg(test)]
     base_url: Option<String>,
 }
 
 impl ApiService {
     /// Create a new `ApiService` with a default reqwest blocking client.
-    pub fn new() -> Self {
+    pub fn new(
+        network_config: crate::config::NetworkConfig,
+        enable_performance_metrics: bool,
+    ) -> Self {
         Self {
             client: Client::new(),
-            story_cache: Cache::new(Duration::from_secs(300)), // 5 minutes
-            comment_cache: Cache::new(Duration::from_secs(300)), // 5 minutes
-            article_cache: Cache::new(Duration::from_secs(900)), // 15 minutes
+            story_cache: Cache::with_metrics(Duration::from_secs(300), enable_performance_metrics), // 5 minutes
+            comment_cache: Cache::with_metrics(
+                Duration::from_secs(300),
+                enable_performance_metrics,
+            ), // 5 minutes
+            article_cache: Cache::with_metrics(
+                Duration::from_secs(900),
+                enable_performance_metrics,
+            ), // 15 minutes
+            network_config,
+            enable_performance_metrics,
             #[cfg(test)]
             base_url: None,
         }
@@ -76,9 +89,11 @@ impl ApiService {
     pub fn with_base_url(base_url: String) -> Self {
         Self {
             client: Client::new(),
-            story_cache: Cache::new(Duration::from_secs(300)),
-            comment_cache: Cache::new(Duration::from_secs(300)),
-            article_cache: Cache::new(Duration::from_secs(900)),
+            story_cache: Cache::with_metrics(Duration::from_secs(300), false),
+            comment_cache: Cache::with_metrics(Duration::from_secs(300), false),
+            article_cache: Cache::with_metrics(Duration::from_secs(900), false),
+            network_config: crate::config::NetworkConfig::default(),
+            enable_performance_metrics: false,
             base_url: Some(base_url),
         }
     }
@@ -94,34 +109,94 @@ impl ApiService {
     }
 
     /// Generic helper to GET a URL and deserialize the JSON body into `T`.
+    /// Retries on network errors and timeouts with exponential backoff.
+    #[tracing::instrument(skip(self), fields(url = %url))]
     fn get_json<T>(&self, url: &str) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .with_context(|| format!("failed to send GET request to {}", url))?;
+        let start = std::time::Instant::now();
+        let mut attempt = 0;
+        let mut delay = self.network_config.initial_retry_delay_ms;
 
-        resp.json::<T>()
-            .with_context(|| format!("failed to parse JSON response from {}", url))
+        loop {
+            attempt += 1;
+            let resp_result = self.client.get(url).send();
+
+            match resp_result {
+                Ok(resp) => {
+                    // Successful connection: parse JSON
+                    let parsed = resp
+                        .json::<T>()
+                        .with_context(|| format!("failed to parse JSON response from {}", url))?;
+                    if self.enable_performance_metrics {
+                        tracing::debug!(elapsed = ?start.elapsed(), url = %url, attempt = attempt, "GET JSON successful");
+                    }
+                    return Ok(parsed);
+                }
+                Err(e) => {
+                    // Check if we should retry
+                    let is_timeout = e.is_timeout();
+                    let is_connect = e.is_connect();
+                    let should_retry =
+                        (is_timeout && self.network_config.retry_on_timeout) || is_connect;
+
+                    if !should_retry || attempt > self.network_config.max_retries {
+                        if self.enable_performance_metrics {
+                            tracing::debug!(elapsed = ?start.elapsed(), url = %url, attempt = attempt, error = %e, "GET JSON failed (final)");
+                        }
+                        return Err(anyhow::Error::new(e))
+                            .with_context(|| format!("failed to send GET request to {}", url));
+                    }
+
+                    tracing::warn!(
+                        "Request to {} failed (attempt {}/{}): {}. Retrying in {}ms...",
+                        url,
+                        attempt,
+                        self.network_config.max_retries + 1,
+                        e,
+                        delay
+                    );
+
+                    // Wait before retrying
+                    std::thread::sleep(Duration::from_millis(delay));
+
+                    // Exponential backoff with cap
+                    delay = (delay * 2).min(self.network_config.max_retry_delay_ms);
+                }
+            }
+        }
     }
 
     /// Fetch a list of story IDs for the given list type (e.g., top, new).
+    #[tracing::instrument(skip(self), fields(list_type = ?list_type))]
     pub fn fetch_story_ids(&self, list_type: StoryListType) -> Result<Vec<u32>> {
+        let start = std::time::Instant::now();
         let url = format!("{}{}.json", self.get_base_url(), list_type.as_api_str());
-        self.get_json(&url)
-            .with_context(|| format!("fetch_story_ids failed for list {:?}", list_type))
+        let result: Vec<u32> = self
+            .get_json(&url)
+            .with_context(|| format!("fetch_story_ids failed for list {:?}", list_type))?;
+
+        if self.enable_performance_metrics {
+            tracing::debug!(elapsed = ?start.elapsed(), count = result.len(), "Fetched story IDs");
+        }
+        Ok(result)
     }
 
     /// Fetch a single story item by id.
+    #[tracing::instrument(skip(self), fields(id = %id))]
     pub fn fetch_story_content(&self, id: u32) -> Result<Story> {
         // Check cache first
         if let Some(story) = self.story_cache.get(&id) {
+            tracing::trace!("Cache hit for story {}", id);
             return Ok(story);
         }
 
+        if self.enable_performance_metrics {
+            tracing::trace!("Cache miss for story {}", id);
+        }
+
+        let start = std::time::Instant::now();
         // Fetch from API
         let url = format!("{}item/{}.json", self.get_base_url(), id);
         let story: Story = self
@@ -130,16 +205,26 @@ impl ApiService {
 
         // Cache the result
         self.story_cache.set(id, story.clone());
+        if self.enable_performance_metrics {
+            tracing::debug!(elapsed = ?start.elapsed(), "Fetched and cached story content");
+        }
         Ok(story)
     }
 
     /// Fetch a single comment item by id.
+    #[tracing::instrument(skip(self), fields(id = %id))]
     pub fn fetch_comment_content(&self, id: u32) -> Result<Comment> {
         // Check cache first
         if let Some(comment) = self.comment_cache.get(&id) {
+            tracing::trace!("Cache hit for comment {}", id);
             return Ok(comment);
         }
 
+        if self.enable_performance_metrics {
+            tracing::trace!("Cache miss for comment {}", id);
+        }
+
+        let start = std::time::Instant::now();
         // Fetch from API
         let url = format!("{}item/{}.json", self.get_base_url(), id);
         let comment: Comment = self
@@ -148,15 +233,20 @@ impl ApiService {
 
         // Cache the result
         self.comment_cache.set(id, comment.clone());
+        if self.enable_performance_metrics {
+            tracing::debug!(elapsed = ?start.elapsed(), "Fetched and cached comment content");
+        }
         Ok(comment)
     }
 
     /// Fetch a tree of comments starting from the given root IDs.
     /// Returns a flattened list of CommentRows in DFS order.
+    #[tracing::instrument(skip(self, root_ids), fields(root_count = root_ids.len()))]
     pub fn fetch_comment_tree(
         &self,
         root_ids: Vec<u32>,
     ) -> Result<Vec<crate::internal::models::CommentRow>> {
+        let start = std::time::Instant::now();
         let mut rows = Vec::new();
         // Limit total comments to prevent freezing on huge threads for now
         let mut total_fetched = 0;
@@ -167,6 +257,9 @@ impl ApiService {
                 break;
             }
             self.fetch_comment_recursive(id, 0, None, &mut rows, &mut total_fetched)?;
+        }
+        if self.enable_performance_metrics {
+            tracing::debug!(elapsed = ?start.elapsed(), fetched = total_fetched, "Fetched comment tree");
         }
         Ok(rows)
     }
@@ -215,12 +308,19 @@ impl ApiService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(url = %url))]
     pub fn fetch_article_content(&self, url: &str) -> Result<Article> {
         // Check cache first
         if let Some(article) = self.article_cache.get(&url.to_string()) {
+            tracing::trace!("Cache hit for article {}", url);
             return Ok(article);
         }
 
+        if self.enable_performance_metrics {
+            tracing::trace!("Cache miss for article {}", url);
+        }
+
+        let start = std::time::Instant::now();
         // Fetch from web
         let response = self
             .client
@@ -239,13 +339,16 @@ impl ApiService {
 
         // Cache the result
         self.article_cache.set(url.to_string(), article.clone());
+        if self.enable_performance_metrics {
+            tracing::debug!(elapsed = ?start.elapsed(), "Fetched and cached article content");
+        }
         Ok(article)
     }
 }
 
 impl Default for ApiService {
     fn default() -> Self {
-        Self::new()
+        Self::new(crate::config::NetworkConfig::default(), false)
     }
 }
 

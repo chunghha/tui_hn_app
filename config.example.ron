@@ -69,4 +69,44 @@
     //         show_author: true,     // Show story author
     //     ),
     // ),
+
+    // Logging Configuration (v0.7.0+)
+    // Configure log levels, performance metrics, and log directory
+    // logging: (
+    //     // Global log level: Trace, Debug, Info, Warn, Error
+    //     level: Info,
+    //     
+    //     // Module-specific log levels (overrides global level)
+    //     // Useful for debugging specific parts of the application
+    //     module_levels: {
+    //         "api": Debug,        // More verbose for API calls
+    //         "tui_hn_app": Info,  // Standard for app
+    //     },
+    //     
+    //     // Enable performance metrics logging (conditional instrumentation)
+    //     // When true, logs timing for API calls, cache ops, and rendering
+    //     // Recommended: true for development, false for production
+    //     enable_performance_metrics: false,
+    //     
+    //     // Custom log directory (defaults to "logs")
+    //     // Use None to use default, or Some("path/to/logs") for custom location
+    //     log_directory: Some("logs"),
+    // ),
+
+    // Network Configuration (v0.7.0+)
+    // Configure automatic retry behavior for network requests
+    // network: (
+    //     // Maximum number of retry attempts for failed requests
+    //     max_retries: 3,
+    //     
+    //     // Initial retry delay in milliseconds (exponential backoff starts here)
+    //     initial_retry_delay_ms: 500,
+    //     
+    //     // Maximum retry delay in milliseconds (exponential backoff cap)
+    //     max_retry_delay_ms: 5000,
+    //     
+    //     // Whether to retry on timeout errors
+    //     // Set to false to fail fast on timeouts
+    //     retry_on_timeout: true,
+    // ),
 )

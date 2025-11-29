@@ -50,7 +50,9 @@ impl Default for TuiTheme {
     }
 }
 
-pub fn load_theme(path: &Path, mode: &str) -> Result<TuiTheme> {
+#[tracing::instrument(skip(path, mode), fields(path = ?path, mode = %mode))]
+pub fn load_theme(path: &Path, mode: &str, enable_performance_metrics: bool) -> Result<TuiTheme> {
+    let start = std::time::Instant::now();
     let content = fs::read_to_string(path).context("Failed to read theme file")?;
     let theme_file: ThemeFile =
         serde_json::from_str(&content).context("Failed to parse theme JSON")?;
@@ -62,7 +64,7 @@ pub fn load_theme(path: &Path, mode: &str) -> Result<TuiTheme> {
         .or_else(|| theme_file.themes.first())
         .context("No matching theme variant found")?;
 
-    Ok(TuiTheme {
+    let theme = TuiTheme {
         background: parse_color(
             variant
                 .colors
@@ -120,7 +122,13 @@ pub fn load_theme(path: &Path, mode: &str) -> Result<TuiTheme> {
                 .get("muted.foreground")
                 .unwrap_or(&"#808080".to_string()),
         ),
-    })
+    };
+
+    if enable_performance_metrics {
+        tracing::debug!(elapsed = ?start.elapsed(), "Loaded theme");
+    }
+
+    Ok(theme)
 }
 
 fn parse_color(hex: &str) -> Color {

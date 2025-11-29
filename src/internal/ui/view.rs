@@ -1,18 +1,24 @@
 #![allow(clippy::single_match)]
 use std::path::Path;
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::prelude::Alignment;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap},
+};
 use textwrap;
 
 use super::app::{App, InputMode, ViewMode};
 use super::sort::{SortBy, SortOrder};
 
+#[tracing::instrument(skip(app, f))]
 pub fn draw(app: &mut App, f: &mut Frame) {
+    // High level render timing. This is conditionalally logged at the end of draw
+    // when performance metrics are enabled and in debug builds.
+    let start = std::time::Instant::now();
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -25,11 +31,41 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     render_top_bar(app, f, chunks[0]);
 
     match app.view_mode {
-        ViewMode::List => render_list(app, f, chunks[1]),
-        ViewMode::StoryDetail => render_detail(app, f, chunks[1]),
-        ViewMode::Article => render_article(app, f, chunks[1]),
-        ViewMode::Bookmarks => render_list(app, f, chunks[1]),
-        ViewMode::History => render_list(app, f, chunks[1]),
+        ViewMode::List => {
+            let view_start = std::time::Instant::now();
+            render_list(app, f, chunks[1]);
+            if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+                tracing::debug!(elapsed = ?view_start.elapsed(), view = "list", "render.list");
+            }
+        }
+        ViewMode::StoryDetail => {
+            let view_start = std::time::Instant::now();
+            render_detail(app, f, chunks[1]);
+            if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+                tracing::debug!(elapsed = ?view_start.elapsed(), view = "detail", "render.detail");
+            }
+        }
+        ViewMode::Article => {
+            let view_start = std::time::Instant::now();
+            render_article(app, f, chunks[1]);
+            if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+                tracing::debug!(elapsed = ?view_start.elapsed(), view = "article", "render.article");
+            }
+        }
+        ViewMode::Bookmarks => {
+            let view_start = std::time::Instant::now();
+            render_list(app, f, chunks[1]);
+            if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+                tracing::debug!(elapsed = ?view_start.elapsed(), view = "bookmarks", "render.bookmarks");
+            }
+        }
+        ViewMode::History => {
+            let view_start = std::time::Instant::now();
+            render_list(app, f, chunks[1]);
+            if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+                tracing::debug!(elapsed = ?view_start.elapsed(), view = "history", "render.history");
+            }
+        }
     }
 
     render_status_bar(app, f, chunks[2]);
@@ -41,9 +77,8 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
 
     // Render notification overlay if present
-    match app.notification_message {
-        Some(_) => render_notification(app, f),
-        None => {}
+    if app.notification.is_some() {
+        render_notification(app, f);
     }
 
     // Render progress overlay if loading all stories
@@ -60,6 +95,16 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     // Render theme editor overlay if active
     if app.theme_editor.active {
         render_theme_editor_overlay(app, f);
+    }
+
+    // Render log viewer overlay if active
+    if app.log_viewer.visible {
+        app.log_viewer.render(f, f.area());
+    }
+
+    // Conditional render timing: only emit when the config allows it and during debug builds
+    if app.config.logging.enable_performance_metrics && cfg!(debug_assertions) {
+        tracing::debug!(elapsed = ?start.elapsed(), "render.draw");
     }
 }
 
@@ -836,6 +881,10 @@ fn parse_status_bar_format(app: &App, format: &str) -> String {
     };
     result = result.replace("{spinner}", &spinner_str);
 
+    // {loading_text} - Loading description
+    let loading_text = app.loading_description().unwrap_or_default();
+    result = result.replace("{loading_text}", &loading_text);
+
     // {theme} - Current theme name
     let theme_name = app
         .available_themes
@@ -851,7 +900,7 @@ fn parse_status_bar_format(app: &App, format: &str) -> String {
 
     // {shortcuts} - Context-sensitive shortcuts (fallback to default behavior)
     let shortcuts = match app.view_mode {
-        ViewMode::List => "j/k:Nav | Enter:View | b:Bookmark | ?:Help | q:Quit",
+        ViewMode::List => "j/k:Nav | Enter:View | b:Bookmark | ?:Help | L:Log | q:Quit",
         ViewMode::StoryDetail => "Esc:Back | o:Browser | Tab:Article | ?:Help",
         ViewMode::Article => "Esc:Back | j/k:Scroll | Tab:Comments | ?:Help",
         ViewMode::Bookmarks => "Enter:View | Esc:Back | ?:Help",
@@ -968,40 +1017,44 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
 }
 
 fn render_notification(app: &App, f: &mut Frame) {
-    match &app.notification_message {
-        Some(msg) => {
-            let area = f.area();
+    if let Some(notification) = &app.notification {
+        let area = f.area();
 
-            // Create centered popup
-            let popup_width = (msg.len() as u16 + 4).min(area.width - 4);
-            let popup_height = 3;
+        // Create centered popup
+        let popup_width = (notification.message.len() as u16 + 4).min(area.width - 4);
+        let popup_height = 3;
 
-            let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-            let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
 
-            let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-            // Clear background
-            let popup = Paragraph::new(msg.as_str())
-                .style(
-                    Style::default()
-                        .bg(app.theme.selection_bg)
-                        .fg(app.theme.selection_fg)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(app.theme.border))
-                        .title("Info")
-                        .title_style(Style::default().fg(app.theme.foreground)),
-                )
-                .alignment(Alignment::Center);
+        // Color code based on notification type
+        use crate::internal::notification::NotificationType;
+        let (bg_color, title) = match notification.notification_type {
+            NotificationType::Info => (Color::Blue, "Info"),
+            NotificationType::Warning => (Color::Yellow, "Warning"),
+            NotificationType::Error => (Color::Red, "Error"),
+        };
 
-            f.render_widget(Clear, popup_area);
-            f.render_widget(popup, popup_area);
-        }
-        None => {}
+        let popup = Paragraph::new(notification.message.as_str())
+            .style(
+                Style::default()
+                    .bg(bg_color)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(app.theme.border))
+                    .title(title)
+                    .title_style(Style::default().fg(app.theme.foreground)),
+            )
+            .alignment(Alignment::Center);
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(popup, popup_area);
     }
 }
 

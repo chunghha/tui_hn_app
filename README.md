@@ -94,6 +94,12 @@ src/
   - Customizable status bar with format tokens
   - Show/hide list view fields (score, comments, domain, age)
   - Configurable padding for all UI components
+- **Error Handling & Logging** (v0.7.0)
+  - Color-coded notifications (Info/Warning/Error) with auto-dismiss
+  - Network retry mechanism with exponential backoff
+  - Configurable logging system with module-specific levels
+  - In-app log viewer (`L`) with syntax highlighting
+  - Performance metrics instrumentation (conditionally enabled)
 
 ## Screenshots
 
@@ -103,6 +109,11 @@ src/
 |:---:|:---:|:---:|
 | ![List View](screenshots/list_view.png)  | ![Article View](screenshots/article_view.png) | ![Comments View](screenshots/comments_view.png) |
 | Hacker News Category List | Article content for a selected story | Comments for the selected story |
+
+| Theme Editor | Log Viewer | Metrics View |
+|:---:|:---:|:---:|
+| ![Theme Editor](screenshots/theme_editor.png) | ![Log Viewer](screenshots/log_view.png) | ![Metrics View](screenshots/metrics_view.png) |
+| Interactive theme customization | Full-screen log viewer with tabs | Performance metrics visualization |
 
 Note: These screenshots were taken with version `v0.4.2`. Subsequent UI enhancements were made after that release, so the current app appearance may differ from the images shown here.
 
@@ -120,6 +131,16 @@ Important config keys:
   - `padding` — horizontal and vertical padding for UI elements
   - `status_bar_format` — custom status bar with format tokens
   - `list_view` — show/hide individual fields in story list
+- `logging` — logging configuration (v0.7.0+):
+  - `level` — global log level
+  - `module_levels` — per-module log level overrides
+  - `enable_performance_metrics` — toggle performance instrumentation
+  - `log_directory` — custom log directory path
+- `network` — network retry configuration (v0.7.0+):
+  - `max_retries` — maximum retry attempts
+  - `initial_retry_delay_ms` — initial backoff delay
+  - `max_retry_delay_ms` — maximum backoff delay
+  - `retry_on_timeout` — whether to retry timeout errors
 
 Example (abbreviated):
 ```ron
@@ -162,6 +183,40 @@ Example (abbreviated):
             show_age: true,
             show_author: true,
         ),
+    ),
+
+    // Optional: Logging Configuration (v0.7.0+)
+    logging: (
+        // Global log level: Trace, Debug, Info, Warn, Error
+        level: Info,
+        
+        // Module-specific log levels (overrides global level)
+        module_levels: {
+            "api": Debug,      // More verbose for API calls
+            "tui_hn_app": Info, // Standard for app
+        },
+        
+        // Enable performance metrics logging (conditional instrumentation)
+        // Recommended: true for development, false for production
+        enable_performance_metrics: true,
+        
+        // Custom log directory (defaults to "logs")
+        log_directory: Some("logs"),
+    ),
+
+    // Optional: Network Configuration (v0.7.0+)
+    network: (
+        // Maximum number of retry attempts for failed requests
+        max_retries: 3,
+        
+        // Initial retry delay in milliseconds
+        initial_retry_delay_ms: 500,
+        
+        // Maximum retry delay in milliseconds (exponential backoff cap)
+        max_retry_delay_ms: 5000,
+        
+        // Whether to retry on timeout errors
+        retry_on_timeout: true,
     ),
 
     // Optional: Custom keybindings (uncomment and customize as needed)

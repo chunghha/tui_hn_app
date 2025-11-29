@@ -15,4 +15,20 @@
     // where explicit Dark/Light variants in `theme_name` are honored verbatim.
     // Defaults to "xterm-ghostty".
     ghost_term_name: "xterm-ghostty",
+
+    // Logging Configuration (v0.7.0+)
+    logging: (
+        level: Info,
+        module_levels: {},
+        enable_performance_metrics: true,  // Enable for development
+        log_directory: Some("logs"),
+    ),
+
+    // Network Configuration (v0.7.0+)
+    network: (
+        max_retries: 3,
+        initial_retry_delay_ms: 500,
+        max_retry_delay_ms: 5000,
+        retry_on_timeout: true,
+    ),
 )

@@ -5,7 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.4] - 2025-11-29
+## [0.7.0] - 2025-11-29
+
+### Added
+- **Enhanced Notifications**: Color-coded user-facing notifications
+  - `NotificationType` enum with Info, Warning, and Error variants
+  - Auto-dismiss with configurable timeouts (Info: 3s, Warning: 5s, Error: 10s)
+  - Color-coded notification overlay (Blue for Info, Yellow for Warning, Red for Error)
+  - Notification helper methods: `notify_info()`, `notify_warning()`, `notify_error()`
+- **Retry Mechanism**: Network resilience for API failures
+  - Exponential backoff for transient failures
+  - Configurable retry count and delays via `NetworkConfig` in `config.ron`
+  - Smart retry only on network errors and timeouts (not on 4xx responses)
+  - Retry progress logging with attempt counts
+  - Configuration options: `max_retries`, `initial_retry_delay_ms`, `max_retry_delay_ms`, `retry_on_timeout`
+- **Configurable Logging**: Flexible logging system
+  - `LogConfig` in `config.ron` for log level configuration
+  - Module-specific log levels via `module_levels` HashMap
+  - Custom log directory support (defaults to `logs/`)
+  - `RUST_LOG` environment variable takes precedence over config
+  - `enable_performance_metrics` flag for conditional instrumentation
+  - `LogLevel` enum: Trace, Debug, Info, Warn, Error
+- **Log Viewer**: In-app debug log viewer
+  - Toggle with `L` for debugging without leaving the app
+  - Reads last 1000 lines from `logs/tui-hn-app.log`
+  - Syntax highlighting for log levels (ERROR: red, WARN: yellow, INFO: blue, DEBUG: green, TRACE: magenta)
+  - Scrollable log history (j/k/↑/↓ to scroll, G for bottom)
+  - Close with Esc or q
+  - Auto-scrolls to bottom when opened
+- **Performance Metrics**: Comprehensive instrumentation
+  - `#[tracing::instrument]` on all key functions
+  - API request timing with conditional logging
+  - Theme loading performance tracking
+  - Cache operation timing (hit/miss tracking)
+  - Debug-only rendering metrics (only in debug builds when `enable_performance_metrics` is enabled)
+  - Per-view render timing (list, detail, article, bookmarks, history)
+  - Overall draw function timing
+
+### Changed
+- `ApiService` now takes `enable_performance_metrics` parameter for conditional logging
+- All `Cache` instances use `Cache::with_metrics()` for performance tracking
+- `load_theme()` function signature updated to accept `enable_performance_metrics` flag
+- `App::new` and `select_theme_from_config` now instrumented with tracing
+- `handle_action` instrumented for action timing
+- View rendering (`draw` function) instrumented with per-view timing
+
+### Technical
+- Added `notification` module with `Notification` and `NotificationType`
+- Added `NetworkConfig` to `AppConfig` with retry configuration
+- Added `LogConfig` and `LogLevel` to `AppConfig`
+- Dynamic `EnvFilter` construction from config in `main.rs`
+- Added `log_viewer` module with `LogViewer` struct and log parsing
+- Pattern matching improvements in `detect_terminal_mode` and theme selection
+- Conditional performance logging throughout `ApiService` and view rendering
+- Added timing instrumentation to fetch methods with `std::time::Instant`
+
+### Notes
+- **Graceful Degradation (Phase 6)**: Deferred to pre-1.0 roadmap
+  - Basic fallback already implemented (theme defaults, error notifications)
+  - Additional fallback strategies for story/comment/article loading deferred
+  - See TODO.md for pre-1.0 tracking
+
+
 
 ### Added
 - **Status Bar Token Parsing**: Customizable status bar with format tokens

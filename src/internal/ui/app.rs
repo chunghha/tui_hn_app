@@ -303,8 +303,7 @@ pub struct App {
     pub current_theme_index: usize,
     #[allow(dead_code)]
     pub terminal_mode: String,
-    pub notification_message: Option<String>,
-    pub notification_timer: Option<tokio::time::Instant>,
+    pub notification: Option<crate::internal::notification::Notification>,
     pub spinner_state: usize,
     pub last_spinner_update: Option<tokio::time::Instant>,
     pub show_help: bool,
@@ -322,13 +321,19 @@ pub struct App {
     pub history: crate::internal::history::History,
     pub keybindings: crate::internal::ui::keybindings::KeyBindingMap,
     pub theme_editor: crate::internal::ui::theme_editor::ThemeEditor,
+    pub log_viewer: crate::internal::ui::log_viewer::LogViewer,
 }
 
 impl App {
+    #[tracing::instrument]
     pub fn new() -> Self {
+        let start = std::time::Instant::now();
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        let api_service = Arc::new(ApiService::new());
         let config = AppConfig::load();
+        let api_service = Arc::new(ApiService::new(
+            config.network.clone(),
+            config.logging.enable_performance_metrics,
+        ));
 
         // Detect terminal mode (dark or light)
         let terminal_mode = Self::detect_terminal_mode();
@@ -402,6 +407,12 @@ impl App {
             keybindings.merge_config(custom_bindings);
         }
 
+        // Initialize log viewer
+        let log_dir = config.logging.log_directory.as_deref().unwrap_or("logs");
+        let log_viewer = crate::internal::ui::log_viewer::LogViewer::new(log_dir.to_string());
+
+        tracing::info!(elapsed = ?start.elapsed(), "App initialized");
+
         Self {
             running: true,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -430,8 +441,7 @@ impl App {
             available_themes,
             current_theme_index,
             terminal_mode,
-            notification_message: None,
-            notification_timer: None,
+            notification: None,
             spinner_state: 0,
             last_spinner_update: None,
             show_help: false,
@@ -454,23 +464,59 @@ impl App {
             history,
             keybindings,
             theme_editor: crate::internal::ui::theme_editor::ThemeEditor::new(theme.clone()),
+            log_viewer,
         }
     }
 
+    /// Set an info notification
+    pub fn notify_info(&mut self, message: impl Into<String>) {
+        self.notification = Some(crate::internal::notification::Notification::info(message));
+    }
+
+    /// Set a warning notification
+    #[allow(dead_code)]
+    pub fn notify_warning(&mut self, message: impl Into<String>) {
+        self.notification = Some(crate::internal::notification::Notification::warning(
+            message,
+        ));
+    }
+
+    /// Set an error notification
+    pub fn notify_error(&mut self, message: impl Into<String>) {
+        self.notification = Some(crate::internal::notification::Notification::error(message));
+    }
+
+    /// Clear the current notification
+    pub fn clear_notification(&mut self) {
+        self.notification = None;
+    }
+
+    /// Check if the current notification should be dismissed
+    #[allow(dead_code)]
+    pub fn should_dismiss_notification(&self) -> bool {
+        if let Some(notification) = &self.notification {
+            notification.should_dismiss()
+        } else {
+            false
+        }
+    }
+
+    /// Detect terminal background mode (light or dark)
     fn detect_terminal_mode() -> String {
-        // Check COLORFGBG environment variable (used by many terminals)
-        // Format is "foreground;background" where higher values mean lighter
-        if let Ok(colorfgbg) = std::env::var("COLORFGBG")
-            && let Some(bg) = colorfgbg.split(';').nth(1)
-            && let Ok(bg_val) = bg.parse::<u8>()
-        {
-            // Background values 0-7 are typically dark, 8-15 are light
-            let mode = match bg_val {
-                0..=7 => "dark",
-                8..=15 => "light",
-                _ => "unknown",
-            };
-            return mode.to_string();
+        // Check COLORFGBG environment variable (e.g., "15;0")
+        // 0-7 are standard colors, 0 is black, 15 is white.
+        // Usually "fg;bg". If bg is 0-6, it's likely dark. If 7-15, likely light.
+        if let Ok(colorfgbg) = std::env::var("COLORFGBG") {
+            let parts: Vec<&str> = colorfgbg.split(';').collect();
+            if parts.len() >= 2
+                && let Ok(bg) = parts.last().unwrap().parse::<u8>()
+            {
+                match bg {
+                    0..=6 => return "dark".to_string(),
+                    _ => return "light".to_string(),
+                }
+            }
+            return "dark".to_string(); // Default to dark if parsing fails but var exists
         }
 
         // Check TERM_PROGRAM for known terminals
@@ -560,6 +606,7 @@ impl App {
 
     /// Centralized theme selection logic extracted from `new`.
     /// Returns (TuiTheme, selected_index) for the given config and discovered themes.
+    #[tracing::instrument(skip(config, available_themes))]
     pub fn select_theme_from_config(
         config: &crate::config::AppConfig,
         available_themes: &[(String, String)],
@@ -571,156 +618,110 @@ impl App {
         }
 
         // Canonicalize configured theme name and detect optional explicit mode token.
-        let theme_name_raw = config.theme_name.trim();
-        let mut requested_mode: Option<String> = None;
-        let mut base_name = theme_name_raw.to_string();
-
-        if let Some(last) = theme_name_raw.split_whitespace().last()
-            && (last.eq_ignore_ascii_case("dark") || last.eq_ignore_ascii_case("light"))
-        {
-            requested_mode = Some(last.to_lowercase());
-            let tokens: Vec<&str> = theme_name_raw.split_whitespace().collect();
-            base_name = match tokens.split_last() {
-                Some((_last, rest)) if !rest.is_empty() => rest.join(" "),
-                _ => String::new(),
-            };
-
-            // Respect ghost terminal name from config; use the provided `term_env` value
-            // passed in by the caller rather than reading the environment here.
-            let ghost_name = config.ghost_term_name.trim();
-            match term_env.eq_ignore_ascii_case(ghost_name) {
-                true => {
-                    tracing::info!(
-                        "TERM='{}' detected; honoring requested theme variant '{}'",
-                        term_env,
-                        requested_mode.as_deref().unwrap_or("unknown")
-                    );
-                }
-                false => match (
-                    requested_mode.as_deref() == Some("dark"),
-                    config.auto_switch_dark_to_light,
-                ) {
-                    (true, true) => {
-                        tracing::info!(
-                            "Auto-switching requested dark variant to light because TERM!='{}' and auto_switch_dark_to_light is enabled",
-                            ghost_name
-                        );
-                        requested_mode = Some("light".to_string());
-                    }
-                    _ => {
-                        tracing::info!("Requested theme variant retained: {:?}", requested_mode);
-                    }
-                },
-            }
-        }
-
-        let base_lower = base_name.to_lowercase();
-        let fullname_lower = theme_name_raw.to_lowercase();
-
-        // Find best candidate index using same strategy as before
-        let mut matched_idx: Option<usize> = None;
-
-        if !base_lower.is_empty() {
-            for (i, (path, mode)) in available_themes.iter().enumerate() {
-                if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
-                    && stem.eq_ignore_ascii_case(&base_lower)
-                {
-                    match (requested_mode.as_deref(), mode.as_str()) {
-                        (Some(_), _)
-                            if mode.eq_ignore_ascii_case(requested_mode.as_deref().unwrap()) =>
+        // e.g. "Gruvbox Light" -> name="Gruvbox", mode="Light"
+        // e.g. "Gruvbox" -> name="Gruvbox", mode=None
+        let (target_name, target_mode) = {
+            let raw = config.theme_name.trim();
+            match raw.rfind(' ') {
+                Some(idx) => {
+                    let (n, m_slice) = raw.split_at(idx);
+                    let m = m_slice.trim();
+                    match m {
+                        mm if mm.eq_ignore_ascii_case("dark")
+                            || mm.eq_ignore_ascii_case("light") =>
                         {
-                            matched_idx = Some(i);
-                            break;
+                            (n.trim(), Some(m))
                         }
-                        (None, _) if mode == terminal_mode => {
-                            matched_idx = Some(i);
-                            break;
-                        }
-                        _ => {
-                            if matched_idx.is_none() {
-                                matched_idx = Some(i);
-                            }
-                        }
+                        _ => (raw, None),
                     }
                 }
+                None => (raw, None),
             }
-        }
+        };
 
-        if matched_idx.is_none() {
-            for (i, (path, mode)) in available_themes.iter().enumerate() {
-                if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str())
-                    && fullname_lower.starts_with(&stem.to_lowercase())
-                {
-                    match (requested_mode.as_deref(), mode.as_str()) {
-                        (Some(_), _)
-                            if mode.eq_ignore_ascii_case(requested_mode.as_deref().unwrap()) =>
-                        {
-                            matched_idx = Some(i);
-                            break;
-                        }
-                        (None, _) if mode == terminal_mode => {
-                            matched_idx = Some(i);
-                            break;
-                        }
-                        _ => {
-                            if matched_idx.is_none() {
-                                matched_idx = Some(i);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // When in ghost terminal: always honor the explicit Dark/Light from config
+        // When NOT in ghost terminal: apply auto_switch logic if enabled
+        let in_ghost_terminal = term_env.eq_ignore_ascii_case(&config.ghost_term_name);
 
-        match matched_idx {
-            Some(idx) => {
-                let (filename, mode) = &available_themes[idx];
-                let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                (theme, idx)
-            }
-            None => match requested_mode.as_deref() {
-                Some(req) => {
-                    match (
-                        available_themes
-                            .iter()
-                            .position(|(_, mode)| mode.eq_ignore_ascii_case(req)),
-                        available_themes
-                            .iter()
-                            .position(|(_, mode)| mode == terminal_mode),
-                    ) {
-                        (Some(idx), _) => {
-                            let (filename, mode) = &available_themes[idx];
-                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                            (theme, idx)
-                        }
-                        (None, Some(idx)) => {
-                            let (filename, mode) = &available_themes[idx];
-                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                            (theme, idx)
-                        }
-                        (None, None) => {
-                            let (filename, mode) = &available_themes[0];
-                            let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                            (theme, 0)
-                        }
+        // Special-case for the author's environment:
+        // My tmux TERM (commonly `screen-256color`) uses a light color scheme.
+        // Therefore, when the runtime TERM equals `screen-256color` and the user
+        // explicitly requested a Dark variant, force selection of the Light variant.
+        let force_light_for_screen256 = term_env.eq_ignore_ascii_case("screen-256color")
+            && matches!(target_mode, Some(m) if m.eq_ignore_ascii_case("dark"));
+
+        // Prefer a pattern-match-based selection, but handle the author's special-case early.
+        let effective_target_mode: Option<&str> = {
+            if force_light_for_screen256 {
+                // Early override for author's tmux TERM
+                Some("light")
+            } else {
+                match target_mode {
+                    Some(tm) if in_ghost_terminal => {
+                        // In ghost terminal: always honor explicit Dark/Light request
+                        Some(tm)
                     }
-                }
-                None => match available_themes
-                    .iter()
-                    .position(|(_, mode)| mode == terminal_mode)
-                {
-                    Some(idx) => {
-                        let (filename, mode) = &available_themes[idx];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, idx)
+                    Some(_tm) if config.auto_switch_dark_to_light => {
+                        // Not in ghost terminal, auto-switch enabled: use terminal's detected mode
+                        Some(terminal_mode)
+                    }
+                    Some(tm) => {
+                        // Not in ghost terminal, auto-switch disabled: use explicit request
+                        Some(tm)
+                    }
+                    None if config.auto_switch_dark_to_light => {
+                        // No explicit mode, auto-switch enabled: use terminal's detected mode
+                        Some(terminal_mode)
                     }
                     None => {
-                        let (filename, mode) = &available_themes[0];
-                        let theme = load_theme(Path::new(filename), mode).unwrap_or_default();
-                        (theme, 0)
+                        // No explicit mode, no auto-switch: prefer dark (or first found)
+                        None
                     }
-                },
+                }
+            }
+        };
+
+        // Helper to check if a theme entry matches our target criteria
+        let matches = |path: &str, mode: &str| -> bool {
+            let stem = Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+
+            // Name match?
+            if !stem.eq_ignore_ascii_case(target_name) {
+                return false;
+            }
+
+            // Mode match?
+            if let Some(tm) = effective_target_mode {
+                return mode.eq_ignore_ascii_case(tm);
+            }
+
+            // No specific mode requested: match first available
+            true
+        };
+
+        // Find index
+        let index = available_themes
+            .iter()
+            .position(|(p, m)| matches(p, m))
+            .unwrap_or(0); // Fallback to first available if no match
+
+        // Load the theme
+        match available_themes.get(index) {
+            Some((path, mode)) => match crate::utils::theme_loader::load_theme(
+                Path::new(path),
+                mode,
+                config.logging.enable_performance_metrics,
+            ) {
+                Ok(theme) => (theme, index),
+                Err(e) => {
+                    tracing::error!("Failed to load theme '{}': {}", path, e);
+                    (TuiTheme::default(), 0)
+                }
             },
+            None => (TuiTheme::default(), 0),
         }
     }
 
@@ -747,6 +748,13 @@ impl App {
                 }
             }
 
+            // Auto-dismiss expired notifications
+            if let Some(notification) = &self.notification
+                && notification.should_dismiss()
+            {
+                self.clear_notification();
+            }
+
             tui.draw(|f| self.ui(f))?;
 
             tokio::select! {
@@ -771,6 +779,25 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
+        // Global toggle for log viewer with plain 'L'
+        if key.code == KeyCode::Char('L') {
+            self.log_viewer.toggle();
+            return;
+        }
+
+        // If log viewer is visible, it traps input
+        if self.log_viewer.visible {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => self.log_viewer.toggle(),
+                KeyCode::Char('j') | KeyCode::Down => self.log_viewer.scroll_down(),
+                KeyCode::Char('k') | KeyCode::Up => self.log_viewer.scroll_up(),
+                KeyCode::Char('G') => self.log_viewer.scroll_to_bottom(),
+                KeyCode::Tab => self.log_viewer.next_tab(),
+                _ => {}
+            }
+            return;
+        }
+
         match self.input_mode {
             InputMode::Search | InputMode::SearchOptions => self.handle_search_input(key),
             InputMode::Normal => self.handle_normal_input(key),
@@ -903,6 +930,26 @@ impl App {
     fn handle_normal_input(&mut self, key: KeyEvent) {
         use crate::internal::ui::keybindings::KeyBindingContext;
 
+        // Handle help overlay shortcuts when active
+        if self.show_help {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+                    self.show_help = false;
+                    return;
+                }
+                KeyCode::Tab => {
+                    // Toggle between page 1 and 2
+                    self.help_page = match self.help_page {
+                        1 => 2,
+                        _ => 1,
+                    };
+                    return;
+                }
+                // Swallow other keys while help is shown to prevent accidental actions
+                _ => return,
+            }
+        }
+
         // Handle theme editor shortcuts when active
         if self.theme_editor.active {
             use crate::internal::ui::theme_editor::EditorState;
@@ -1016,8 +1063,7 @@ impl App {
                 };
 
                 // Notify user briefly
-                self.notification_message = Some(format!("Auto-switch Dark->Light {}", status));
-                self.notification_timer = Some(tokio::time::Instant::now());
+                self.notify_info(format!("Auto-switch Dark->Light {}", status));
 
                 // Re-evaluate theme selection using the centralized helper and apply it immediately.
                 let term_env = std::env::var("TERM").unwrap_or_default();
@@ -1067,6 +1113,7 @@ impl App {
         }
     }
 
+    #[tracing::instrument(skip(self, action))]
     async fn handle_action(&mut self, action: Action) {
         match action {
             Action::Quit => self.running = false,
@@ -1142,13 +1189,10 @@ impl App {
                     // 1. Save current theme
                     match self.export_theme_to_file(&name, None) {
                         Ok(path) => {
-                            self.notification_message =
-                                Some(format!("Theme saved to {}", path.display()));
-                            self.notification_timer = Some(tokio::time::Instant::now());
+                            self.notify_info(format!("Saved theme to {}", path.display()));
                         }
                         Err(e) => {
-                            self.notification_message = Some(format!("Error saving theme: {}", e));
-                            self.notification_timer = Some(tokio::time::Instant::now());
+                            self.notify_error(format!("Error saving theme: {}", e));
                         }
                     }
 
@@ -1273,8 +1317,7 @@ impl App {
                             self.loaded_count,
                             self.story_ids.len()
                         );
-                        self.notification_message = Some(msg);
-                        self.notification_timer = Some(tokio::time::Instant::now());
+                        self.notify_info(msg);
 
                         // Schedule notification clear
                         let tx = self.action_tx.clone();
@@ -1322,8 +1365,7 @@ impl App {
                                 self.loaded_count,
                                 self.story_ids.len()
                             );
-                            self.notification_message = Some(msg);
-                            self.notification_timer = Some(tokio::time::Instant::now());
+                            self.notify_info(msg);
 
                             // Schedule notification clear
                             let tx = self.action_tx.clone();
@@ -1451,8 +1493,7 @@ impl App {
             Action::LoadMoreComments => {
                 // With fetch_comment_tree, we load all comments at once (up to MAX_COMMENTS limit)
                 // So this action is essentially a no-op for now
-                self.notification_message = Some("All comments already loaded".to_string());
-                self.notification_timer = Some(tokio::time::Instant::now());
+                self.notify_info("All comments already loaded");
 
                 // Schedule notification clear
                 let tx = self.action_tx.clone();
@@ -1585,7 +1626,11 @@ impl App {
                         let new_idx = group[next_pos];
                         self.current_theme_index = new_idx;
                         let (filename, mode) = &self.available_themes[new_idx];
-                        if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
+                        if let Ok(new_theme) = load_theme(
+                            Path::new(filename),
+                            mode,
+                            self.config.logging.enable_performance_metrics,
+                        ) {
                             self.theme = new_theme;
                         }
                     }
@@ -1606,7 +1651,11 @@ impl App {
                         }
                         self.current_theme_index = chosen;
                         let (filename, mode) = &self.available_themes[self.current_theme_index];
-                        if let Ok(new_theme) = load_theme(Path::new(filename), mode) {
+                        if let Ok(new_theme) = load_theme(
+                            Path::new(filename),
+                            mode,
+                            self.config.logging.enable_performance_metrics,
+                        ) {
                             self.theme = new_theme;
                         }
                     }
@@ -1656,19 +1705,16 @@ impl App {
                         match self.bookmarks.save() {
                             Err(e) => {
                                 tracing::error!(%e, "Failed to save bookmarks");
-                                self.notification_message =
-                                    Some("Failed to save bookmarks".to_string());
+                                self.notify_error("Failed to save bookmarks".to_string());
                             }
                             Ok(_) => {
                                 let msg = match self.bookmarks.contains(story.id) {
                                     true => "Bookmarked".to_string(),
                                     false => "Bookmark removed".to_string(),
                                 };
-                                self.notification_message = Some(msg);
+                                self.notify_info(msg);
                             }
                         }
-                        self.notification_timer = Some(tokio::time::Instant::now());
-
                         // If we're in the Bookmarks view, adjust the selection so that a removed
                         // bookmark disappears from the list and selection is clamped to a valid index.
                         if let ViewMode::Bookmarks = self.view_mode {
@@ -1685,7 +1731,10 @@ impl App {
                                 (false, false, Some(prev)) => {
                                     // Clamp selection to last index if needed
                                     let max_idx = self.bookmarks.stories.len().saturating_sub(1);
-                                    let new_idx = if prev > max_idx { max_idx } else { prev };
+                                    let new_idx = match prev.cmp(&max_idx) {
+                                        std::cmp::Ordering::Greater => max_idx,
+                                        _ => prev,
+                                    };
                                     self.story_list_state.select(Some(new_idx));
                                 }
                                 (false, false, None) => {
@@ -1711,9 +1760,7 @@ impl App {
                         });
                     }
                     None => {
-                        self.notification_message =
-                            Some("No story selected to (un)bookmark".to_string());
-                        self.notification_timer = Some(tokio::time::Instant::now());
+                        self.notify_info("No story selected to (un)bookmark".to_string());
 
                         // Schedule notification clear after a short delay
                         let tx = self.action_tx.clone();
@@ -1743,62 +1790,55 @@ impl App {
                         match std::fs::create_dir_all(&app_dir) {
                             Err(e) => {
                                 tracing::error!(%e, "Failed to create config dir for export");
-                                self.notification_message =
-                                    Some("Bookmark export failed".to_string());
+                                self.notify_error("Bookmark export failed".to_string());
                             }
                             Ok(_) => {
                                 let export_path = app_dir.join("bookmarks_export.json");
                                 match serde_json::to_string_pretty(&self.bookmarks) {
                                     Ok(content) => match std::fs::write(&export_path, content) {
                                         Ok(_) => {
-                                            self.notification_message = Some(format!(
+                                            self.notify_info(format!(
                                                 "Exported to {}",
                                                 export_path.display()
                                             ));
                                         }
                                         Err(e) => {
                                             tracing::error!(%e, "Failed to write export file");
-                                            self.notification_message =
-                                                Some("Bookmark export failed".to_string());
+                                            self.notify_error("Bookmark export failed".to_string());
                                         }
                                     },
                                     Err(e) => {
                                         tracing::error!(%e, "Failed to serialize bookmarks");
-                                        self.notification_message =
-                                            Some("Bookmark export failed".to_string());
+                                        self.notify_error("Bookmark export failed".to_string());
                                     }
                                 }
                             }
                         }
                     }
                     None => {
-                        self.notification_message =
-                            Some("Bookmark export failed (no config dir)".to_string());
+                        self.notify_error("Bookmark export failed (no config dir)".to_string());
                     }
                 }
-                self.notification_timer = Some(tokio::time::Instant::now());
             }
             Action::ImportBookmarks => {
                 // Try to load bookmarks from disk (bookmarks.json). If it fails, keep current bookmarks.
                 match crate::internal::bookmarks::Bookmarks::load_or_create() {
                     Ok(b) => {
                         self.bookmarks = b;
-                        self.notification_message = Some("Bookmarks imported".to_string());
+                        self.notify_info("Bookmarks imported".to_string());
                     }
                     Err(e) => {
                         tracing::error!(%e, "Failed to import bookmarks");
-                        self.notification_message = Some("Bookmark import failed".to_string());
+                        self.notify_error("Bookmark import failed".to_string());
                     }
                 }
-                self.notification_timer = Some(tokio::time::Instant::now());
             }
             Action::ViewHistory => {
                 self.view_mode = ViewMode::History;
                 self.story_list_state.select(Some(0));
             }
             Action::ClearNotification => {
-                self.notification_message = None;
-                self.notification_timer = None;
+                self.clear_notification();
             }
             Action::Error(msg) => {
                 self.loading = false;
@@ -2022,13 +2062,41 @@ mod tests {
         ];
 
         // Terminal mode argument (runtime detection) - pass non-ghost TERM
+        // We simulate a Light terminal to verify that auto-switch respects the terminal mode
         let term_env = "xterm-256color";
-        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "dark", term_env);
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "light", term_env);
 
         // Should select the light variant (index 1) because auto-switch is on
         assert_eq!(
             idx, 1,
             "Expected light variant to be chosen when TERM is not ghost and auto-switch is on"
+        );
+    }
+
+    #[test]
+    fn force_light_when_ghost_term_is_screen_256color() {
+        // Configure AppConfig to request Gruvbox Dark but ghost_term_name is `screen-256color`.
+        let cfg = AppConfig {
+            theme_name: "Gruvbox Dark".to_string(),
+            ghost_term_name: "screen-256color".to_string(),
+            auto_switch_dark_to_light: true,
+            ..Default::default()
+        };
+
+        let available = vec![
+            ("./themes/gruvbox.json".to_string(), "dark".to_string()),
+            ("./themes/gruvbox.json".to_string(), "light".to_string()),
+        ];
+
+        // Terminal reports TERM=screen-256color
+        let term_env = "screen-256color";
+        // We expect the light variant to be chosen when ghost_term_name is 'screen-256color'
+        // even though the config requested "Gruvbox Dark".
+        let (_theme, idx) = App::select_theme_from_config(&cfg, &available, "light", term_env);
+
+        assert_eq!(
+            idx, 1,
+            "Expected light variant to be chosen when ghost_term_name is 'screen-256color' even if config requests Dark"
         );
     }
 

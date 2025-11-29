@@ -79,6 +79,7 @@ Always run all tests (except intentionally long-running ones) each time you make
 - Use `Result` for recoverable errors and `panic!` for unrecoverable errors. Use the `?` operator for concise error propagation.
 - Prefer functional-style combinators (`map`, `and_then`, `unwrap_or`, etc.) when they improve clarity.
 - Write idiomatic Rust code, following the official Rust API Guidelines.
+- Prefer pattern matching (`match`) over `if-else` blocks where possible, especially for `Option`, `Result`, and enums, to ensure exhaustiveness and idiomatic Rust style.
 - Add documentation comments to public APIs using `///`.
 - Add tests, including unit tests, integration tests, and documentation tests.
 - Use gpui components when building UI. See https://longbridge.github.io/gpui-component/docs/components/ for available components.

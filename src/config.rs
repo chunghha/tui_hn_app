@@ -51,7 +51,10 @@ impl Default for UIConfig {
     fn default() -> Self {
         Self {
             padding: PaddingConfig::default(),
-            status_bar_format: "{mode} | {shortcuts}".to_string(),
+            // Richer default format to match v0.6.3 experience
+            status_bar_format:
+                "{spinner} {mode} | {category} | {count}/{total} | {sort} {order} | {shortcuts} {loading_text}"
+                    .to_string(),
             list_view: ListViewConfig::default(),
         }
     }
@@ -74,6 +77,73 @@ impl Default for ListViewConfig {
             show_comments: true,
             show_age: true,
             show_author: true,
+        }
+    }
+}
+
+/// Network retry configuration
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct NetworkConfig {
+    /// Maximum number of retry attempts (0 = no retries)
+    pub max_retries: u32,
+    /// Initial retry delay in milliseconds
+    pub initial_retry_delay_ms: u64,
+    /// Maximum retry delay in milliseconds (caps exponential backoff)
+    pub max_retry_delay_ms: u64,
+    /// Whether to retry on timeout errors
+    pub retry_on_timeout: bool,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_retry_delay_ms: 500,
+            max_retry_delay_ms: 5000,
+            retry_on_timeout: true,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Trace => write!(f, "trace"),
+            LogLevel::Debug => write!(f, "debug"),
+            LogLevel::Info => write!(f, "info"),
+            LogLevel::Warn => write!(f, "warn"),
+            LogLevel::Error => write!(f, "error"),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct LogConfig {
+    pub level: LogLevel,
+    pub module_levels: HashMap<String, LogLevel>,
+    pub enable_performance_metrics: bool,
+    pub log_directory: Option<String>,
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level: LogLevel::Info,
+            module_levels: HashMap::new(),
+            enable_performance_metrics: false,
+            log_directory: None,
         }
     }
 }
@@ -104,6 +174,12 @@ pub struct AppConfig {
     /// UI customization settings
     #[serde(default)]
     pub ui: UIConfig,
+    /// Network retry settings
+    #[serde(default)]
+    pub network: NetworkConfig,
+    /// Logging configuration
+    #[serde(default)]
+    pub logging: LogConfig,
 }
 
 fn default_theme_name() -> String {
@@ -131,6 +207,8 @@ impl Default for AppConfig {
             ghost_term_name: default_ghost_term_name(),
             keybindings: None,
             ui: UIConfig::default(),
+            network: NetworkConfig::default(),
+            logging: LogConfig::default(),
         }
     }
 }
