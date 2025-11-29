@@ -5,7 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.3] - 2025-11-29
+
+### Added
+- **Interactive Theme Editor**: Real-time theme customization
+  - Toggle with `E` key
+  - Visual overlay with property list and RGB sliders
+  - Real-time preview of changes across the entire UI
+  - Export custom themes to JSON (`s` key)
+  - Keyboard-driven navigation (`↑`/`↓` properties, `←`/`→` channels, `+`/`-` adjust)
+- **Multi-page Help System**:
+  - Tab key toggles between General Shortcuts and Theme Editor Shortcuts
+  - Updated help overlay layout
+
+### Changed
+- Improved help overlay with cleaner layout and better visibility for shortcuts
+- Combined theme editor status and overlay for a unified experience
+
+## [0.6.2] - 2025-11-28
+
+### Added
+- **Theme Editor Infrastructure**: Core backend for theme editing
+  - `ThemeEditor` struct and state management
+  - `ThemeProperty` and `ColorChannel` enums
+  - Theme export functionality (`export_theme_to_file`)
+  - `ToggleThemeEditor` and `ExportTheme` actions
+- Updated `App` to support theme editing state
+
+### Technical
+- Added `serde_json` serialization for `TuiTheme` export
+- Cleaned up `cargo clippy` warnings
+
+
 
 ## [0.6.1] - 2025-11-28
 

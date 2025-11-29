@@ -214,17 +214,27 @@ Based on current codebase maturity, I recommend prioritizing:
 - ✅ Action system integration (ToggleThemeEditor, ExportTheme)
 - ⏭️ Interactive UI overlay (deferred to v0.6.3)
 
-#### v0.6.3 - Theme Editor UI (Planned)
-- [ ] Interactive theme editor overlay
-- [ ] Color picker widget with RGB sliders
-- [ ] Real-time theme preview
-- [ ] Keyboard shortcuts ('E' to toggle, arrows to navigate)
-- [ ] Live property editing with instant feedback
+#### v0.6.3 - Theme Editor UI (Completed - 2025-11-29)
+- ✅ Interactive keyboard-driven theme editor
+- ✅ Real-time theme preview with instant color updates
+- ✅ Keyboard shortcuts (E: toggle, ↑↓: navigate, ←→: channel, +/-: adjust, s: save, Esc: cancel)
+- ✅ Export themes to JSON
+- ✅ Visual overlay rendering with property list and RGB sliders
+- ✅ Theme naming popup with user input
+- ✅ Hex color display and preview box
+- ✅ Automatic complementary theme generation (dark/light variants)
 
 #### v0.6.4 - UI Customization Completion (Planned)
 - [ ] Status bar format token parsing
 - [ ] List view field visibility rendering
 - [ ] Complete remaining padding conversions (7 locations)
+
+#### v0.6.5 - Theme Save Location Configuration (Planned)
+- [ ] Configurable theme save location (currently hardcoded to `./themes/`)
+  - Allow custom directory via config.ron
+  - Support for user config directory (e.g., `~/.config/tui-hn-app/themes/`)
+  - Fallback to default if custom location is not writable
+  - Auto-create directory if it doesn't exist
 
 ### 🏁 v1.0.0 (Stable)
 - Complete feature parity with web interface

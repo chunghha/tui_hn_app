@@ -83,27 +83,34 @@ pub enum ColorChannel {
     Blue,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EditorState {
+    Editing,
+    Naming,
+}
+
 #[derive(Debug, Clone)]
 pub struct ThemeEditor {
     pub active: bool,
+    pub state: EditorState,
     pub selected_property: usize,
     #[allow(dead_code)]
     pub selected_channel: ColorChannel,
     pub editing: bool,
     pub temp_theme: TuiTheme,
-    #[allow(dead_code)]
-    pub theme_name: String,
+    pub name_input: String,
 }
 
 impl ThemeEditor {
     pub fn new(current_theme: TuiTheme) -> Self {
         Self {
             active: false,
+            state: EditorState::Editing,
             selected_property: 0,
             selected_channel: ColorChannel::Red,
             editing: false,
             temp_theme: current_theme,
-            theme_name: "custom".to_string(),
+            name_input: String::new(),
         }
     }
 
@@ -114,6 +121,8 @@ impl ThemeEditor {
             self.temp_theme = current_theme.clone();
             self.selected_property = 0;
             self.editing = false;
+            self.state = EditorState::Editing;
+            self.name_input.clear();
         }
     }
 
@@ -150,26 +159,23 @@ impl ThemeEditor {
         if let Color::Rgb(r, g, b) = current_color {
             let (new_r, new_g, new_b) = match self.selected_channel {
                 ColorChannel::Red => {
-                    let new_r = if increase {
-                        r.saturating_add(5)
-                    } else {
-                        r.saturating_sub(5)
+                    let new_r = match increase {
+                        true => r.saturating_add(5),
+                        false => r.saturating_sub(5),
                     };
                     (new_r, g, b)
                 }
                 ColorChannel::Green => {
-                    let new_g = if increase {
-                        g.saturating_add(5)
-                    } else {
-                        g.saturating_sub(5)
+                    let new_g = match increase {
+                        true => g.saturating_add(5),
+                        false => g.saturating_sub(5),
                     };
                     (r, new_g, b)
                 }
                 ColorChannel::Blue => {
-                    let new_b = if increase {
-                        b.saturating_add(5)
-                    } else {
-                        b.saturating_sub(5)
+                    let new_b = match increase {
+                        true => b.saturating_add(5),
+                        false => b.saturating_sub(5),
                     };
                     (r, g, new_b)
                 }
@@ -185,5 +191,50 @@ impl ThemeEditor {
     pub fn get_current_property(&self) -> Option<ThemeProperty> {
         let properties = ThemeProperty::all();
         properties.get(self.selected_property).copied()
+    }
+
+    // Calculate luminance to determine if theme is dark
+    // Formula: 0.2126*R + 0.7152*G + 0.0722*B
+    pub fn is_dark_theme(&self) -> bool {
+        if let Color::Rgb(r, g, b) = self.temp_theme.background {
+            let lum = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
+            lum < 128.0
+        } else {
+            true // Default to dark if unknown
+        }
+    }
+
+    // Generate a complementary theme
+    pub fn generate_complementary(&self) -> TuiTheme {
+        let mut new_theme = self.temp_theme.clone();
+
+        // Helper to invert color
+        let invert = |c: Color| -> Color {
+            if let Color::Rgb(r, g, b) = c {
+                Color::Rgb(255 - r, 255 - g, 255 - b)
+            } else {
+                c
+            }
+        };
+
+        // Invert main background and foreground
+        new_theme.background = invert(self.temp_theme.background);
+        new_theme.foreground = invert(self.temp_theme.foreground);
+
+        // Adjust selection
+        new_theme.selection_bg = invert(self.temp_theme.selection_bg);
+        new_theme.selection_fg = invert(self.temp_theme.selection_fg);
+
+        // Keep accent colors but maybe adjust brightness if needed?
+        // For now, let's just invert them too to ensure contrast,
+        // or keep them if they are mid-tone.
+        // A simple inversion is a good starting point for "opposite".
+        new_theme.border = invert(self.temp_theme.border);
+        new_theme.link = invert(self.temp_theme.link);
+        new_theme.score = invert(self.temp_theme.score);
+        new_theme.comment_author = invert(self.temp_theme.comment_author);
+        new_theme.comment_time = invert(self.temp_theme.comment_time);
+
+        new_theme
     }
 }

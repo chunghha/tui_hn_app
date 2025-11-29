@@ -53,9 +53,13 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
 
     // Render help overlay if active
-    match app.show_help {
-        true => render_help_overlay(app, f),
-        false => {}
+    if app.show_help {
+        render_help_overlay(app, f);
+    }
+
+    // Render theme editor overlay if active
+    if app.theme_editor.active {
+        render_theme_editor_overlay(app, f);
     }
 }
 
@@ -887,7 +891,7 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
 
     // Create centered popup
     let popup_width = 56.min(area.width - 4);
-    let popup_height = 32.min(area.height - 4);
+    let popup_height = 30.min(area.height - 4);
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
     let popup_y = (area.height.saturating_sub(popup_height)) / 2;
@@ -913,149 +917,502 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
     let inner_area = block.inner(popup_area);
     f.render_widget(block, popup_area);
 
-    // Shortcuts content
-    let shortcuts = vec![
-        Line::from(vec![Span::styled(
-            "Global",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("?", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Show this help"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("q / Esc", Style::default().fg(app.theme.comment_time)),
-            Span::raw("  Quit / Back / Close overlay"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("t", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Toggle theme (Light/Dark)"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("g", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Toggle auto-switch theme"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Navigation",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("j / k", Style::default().fg(app.theme.comment_time)),
-            Span::raw("    Move selection down / up"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Enter", Style::default().fg(app.theme.comment_time)),
-            Span::raw("    View story details"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Tab", Style::default().fg(app.theme.comment_time)),
-            Span::raw("      Toggle Article/Comments view"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Story List",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("1-6", Style::default().fg(app.theme.comment_time)),
-            Span::raw("      Switch categories (Top, New, Best...)"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("S/C/T", Style::default().fg(app.theme.comment_time)),
-            Span::raw("    Sort by Score/Comments/Time"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("O", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Toggle sort order (asc/desc)"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("/", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Search stories"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("m", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Load more stories"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("A", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Load ALL stories"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Bookmarks",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("b", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Toggle bookmark on selected story"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("B", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        View bookmarked stories"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "History",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("H", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        View history"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("X", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Clear history (in History view)"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Article / Comments",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(app.theme.selection_bg),
-        )]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("o", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Open in browser"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("n", Style::default().fg(app.theme.comment_time)),
-            Span::raw("        Load more comments"),
-        ]),
-    ];
+    // Shortcuts content based on page
+    let shortcuts = match app.help_page {
+        1 => vec![
+            Line::from(vec![Span::styled(
+                "General Shortcuts (Tab for Theme Editor)",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Global",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("?", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Show this help"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("q / Esc", Style::default().fg(app.theme.comment_time)),
+                Span::raw("  Quit / Back / Close overlay"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("t", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Toggle theme (Light/Dark)"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("g", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Toggle auto-switch theme"),
+            ]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Navigation",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("j / k", Style::default().fg(app.theme.comment_time)),
+                Span::raw("    Move selection down / up"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Enter", Style::default().fg(app.theme.comment_time)),
+                Span::raw("    View story details"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Tab", Style::default().fg(app.theme.comment_time)),
+                Span::raw("      Toggle Article/Comments view"),
+            ]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Story List",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("1-6", Style::default().fg(app.theme.comment_time)),
+                Span::raw("      Switch categories (Top, New, Best...)"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("S/C/T", Style::default().fg(app.theme.comment_time)),
+                Span::raw("    Sort by Score/Comments/Time"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("O", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Toggle sort order (asc/desc)"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("/", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Search stories"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("m", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Load more stories"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("A", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Load ALL stories"),
+            ]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Bookmarks & History",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("b", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Toggle bookmark • "),
+                Span::styled("B", Style::default().fg(app.theme.comment_time)),
+                Span::raw(" View bookmarks"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("H", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        View history • "),
+                Span::styled("X", Style::default().fg(app.theme.comment_time)),
+                Span::raw(" Clear history"),
+            ]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Article / Comments",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(app.theme.selection_bg),
+            )]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("o", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Open in browser"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("n", Style::default().fg(app.theme.comment_time)),
+                Span::raw("        Load more comments"),
+            ]),
+        ],
+        _ => {
+            // Page 2: Theme Editor
+            vec![
+                Line::from(vec![Span::styled(
+                    "Theme Editor Shortcuts (Tab for General)",
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(app.theme.selection_bg),
+                )]),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "Toggle Editor",
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(app.theme.selection_bg),
+                )]),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("E", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("        Open/close theme editor"),
+                ]),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "When Editor is Active",
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(app.theme.selection_bg),
+                )]),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("↑ / ↓", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("      Navigate theme properties"),
+                ]),
+                Line::from(vec![Span::raw(
+                    "            (Background, Foreground, Selection, etc.)",
+                )]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("← / →", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("      Switch RGB channels (Red/Green/Blue)"),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("+ / =", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("      Increase color value (+5)"),
+                ]),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("- / _", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("      Decrease color value (-5)"),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("s", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("        Save theme to JSON"),
+                ]),
+                Line::from(vec![Span::raw(
+                    "            (Exports to ./themes/custom_custom.json)",
+                )]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Esc", Style::default().fg(app.theme.comment_time)),
+                    Span::raw("      Close editor (discard changes)"),
+                ]),
+                Line::from(""),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "ℹ Note",
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(app.theme.comment_time),
+                )]),
+                Line::from(vec![Span::raw(
+                    "  Theme changes apply in real-time as you edit.",
+                )]),
+                Line::from(vec![Span::raw("  All colors use RGB values (0-255).")]),
+            ]
+        }
+    };
 
     let p = Paragraph::new(shortcuts)
         .style(Style::default().fg(app.theme.foreground))
         .wrap(Wrap { trim: false }); // Don't trim to preserve indentation
 
     f.render_widget(p, inner_area);
+}
+
+fn render_theme_editor_overlay(app: &App, f: &mut Frame) {
+    use crate::internal::ui::theme_editor::{ColorChannel, ThemeProperty};
+
+    let area = f.area();
+
+    // Create centered popup
+    let popup_width = 60.min(area.width - 4);
+    let popup_height = 20.min(area.height - 4);
+
+    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+    let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+
+    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    // Clear background
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.theme.selection_bg))
+        .title(" Theme Editor ")
+        .title_style(
+            Style::default()
+                .fg(app.theme.selection_fg)
+                .bg(app.theme.selection_bg)
+                .add_modifier(Modifier::BOLD),
+        )
+        .style(Style::default().bg(app.theme.background));
+
+    let inner_area = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    // Split into Property List (Left) and Color Editor (Right)
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50), // Properties
+            Constraint::Percentage(50), // Color Editor
+        ])
+        .split(inner_area);
+
+    // 1. Property List
+    let properties = ThemeProperty::all();
+    let items: Vec<ListItem> = properties
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let is_selected = i == app.theme_editor.selected_property;
+            let style = if is_selected {
+                Style::default()
+                    .fg(app.theme.selection_fg)
+                    .bg(app.theme.selection_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.foreground)
+            };
+            ListItem::new(p.name()).style(style)
+        })
+        .collect();
+
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(app.theme.comment_time)),
+    );
+    f.render_widget(list, chunks[0]);
+
+    // 2. Color Editor
+    if let Some(property) = app.theme_editor.get_current_property() {
+        let color = property.get_color(&app.theme_editor.temp_theme);
+
+        // Extract RGB values
+        let (r, g, b) = match color {
+            ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
+            _ => (128, 128, 128), // Fallback for non-RGB
+        };
+
+        let editor_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2), // Header
+                Constraint::Length(3), // Red
+                Constraint::Length(3), // Green
+                Constraint::Length(3), // Blue
+                Constraint::Min(1),    // Preview/Help
+            ])
+            .margin(1)
+            .split(chunks[1]);
+
+        // Header
+        f.render_widget(
+            Paragraph::new(format!("Editing: {}", property.name())).style(
+                Style::default()
+                    .fg(app.theme.foreground)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            editor_chunks[0],
+        );
+
+        // Helper to render channel slider
+        let render_channel =
+            |f: &mut Frame, area: Rect, name: &str, value: u8, channel: ColorChannel| {
+                let is_selected = app.theme_editor.selected_channel == channel;
+                let label_style = if is_selected {
+                    Style::default()
+                        .fg(app.theme.selection_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.foreground)
+                };
+
+                let gauge = ratatui::widgets::Gauge::default()
+                    .block(Block::default().title(name).title_style(label_style))
+                    .gauge_style(
+                        Style::default()
+                            .fg(match channel {
+                                ColorChannel::Red => ratatui::style::Color::Red,
+                                ColorChannel::Green => ratatui::style::Color::Green,
+                                ColorChannel::Blue => ratatui::style::Color::Blue,
+                            })
+                            .bg(ratatui::style::Color::DarkGray),
+                    )
+                    .ratio(value as f64 / 255.0)
+                    .label(format!("{}", value));
+
+                f.render_widget(gauge, area);
+            };
+
+        render_channel(f, editor_chunks[1], "Red", r, ColorChannel::Red);
+        render_channel(f, editor_chunks[2], "Green", g, ColorChannel::Green);
+        render_channel(f, editor_chunks[3], "Blue", b, ColorChannel::Blue);
+
+        // Footer: Shortcuts (Left) + Hex/Preview (Right)
+        let footer_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(60), // Shortcuts
+                Constraint::Percentage(40), // Hex/Preview
+            ])
+            .split(editor_chunks[4]);
+
+        // Shortcuts
+        let help_text = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    "←/→",
+                    Style::default()
+                        .fg(app.theme.link)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Channel"),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    "+/-",
+                    Style::default()
+                        .fg(app.theme.link)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Adjust"),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    "s  ",
+                    Style::default()
+                        .fg(app.theme.link)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Save"),
+            ]),
+        ];
+        f.render_widget(
+            Paragraph::new(help_text).style(Style::default().fg(app.theme.foreground)),
+            footer_chunks[0],
+        );
+
+        // Hex Code and Preview
+        let hex_code = format!("#{:02X}{:02X}{:02X}", r, g, b);
+        let preview_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Spacing
+                Constraint::Length(1), // Hex Code
+                Constraint::Length(1), // Spacing
+                Constraint::Length(2), // Preview Box
+            ])
+            .split(footer_chunks[1]);
+
+        f.render_widget(
+            Paragraph::new(hex_code)
+                .style(
+                    Style::default()
+                        .fg(app.theme.comment_time)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .alignment(Alignment::Right),
+            preview_layout[1],
+        );
+
+        f.render_widget(
+            Block::default().style(Style::default().bg(color)),
+            preview_layout[3],
+        );
+    }
+
+    // Render Naming Popup if in Naming state
+    if let crate::internal::ui::theme_editor::EditorState::Naming = app.theme_editor.state {
+        let area = {
+            let area = f.area();
+            let vertical = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(40),
+                    Constraint::Length(10),
+                    Constraint::Percentage(40),
+                ])
+                .split(area);
+
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(30),
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(30),
+                ])
+                .split(vertical[1])[1]
+        };
+        f.render_widget(Clear, area);
+
+        let block = Block::default()
+            .title(" Save Theme ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.selection_bg));
+
+        f.render_widget(block.clone(), area);
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .margin(1)
+            .split(area);
+
+        f.render_widget(
+            Paragraph::new("Enter theme name:").style(Style::default().fg(app.theme.foreground)),
+            layout[0],
+        );
+
+        f.render_widget(
+            Paragraph::new(app.theme_editor.name_input.as_str()).style(
+                Style::default()
+                    .fg(app.theme.foreground)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            layout[1],
+        );
+
+        // Cursor
+        f.set_cursor_position((
+            layout[1].x + app.theme_editor.name_input.len() as u16,
+            layout[1].y,
+        ));
+
+        f.render_widget(
+            Paragraph::new("Enter: Save | Esc: Cancel")
+                .style(Style::default().fg(app.theme.comment_time)),
+            layout[2],
+        );
+    }
 }

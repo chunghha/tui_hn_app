@@ -311,6 +311,7 @@ pub struct App {
     pub spinner_state: usize,
     pub last_spinner_update: Option<tokio::time::Instant>,
     pub show_help: bool,
+    pub help_page: usize,
     pub input_mode: InputMode,
     pub search_query: crate::internal::search::SearchQuery,
     pub search_history: crate::internal::search::SearchHistory,
@@ -437,6 +438,7 @@ impl App {
             spinner_state: 0,
             last_spinner_update: None,
             show_help: false,
+            help_page: 1,
             input_mode: InputMode::Normal,
             search_query: crate::internal::search::SearchQuery::default(),
             search_history: match crate::internal::search::SearchHistory::load_or_create(20) {
@@ -901,6 +903,88 @@ impl App {
     fn handle_normal_input(&mut self, key: KeyEvent) {
         use crate::internal::ui::keybindings::KeyBindingContext;
 
+        // Handle theme editor shortcuts when active
+        if self.theme_editor.active {
+            use crate::internal::ui::theme_editor::EditorState;
+
+            match self.theme_editor.state {
+                EditorState::Naming => {
+                    match key.code {
+                        KeyCode::Enter => {
+                            // Save with provided name
+                            let name = self.theme_editor.name_input.trim().to_string();
+                            if !name.is_empty() {
+                                // 1. Save original theme
+                                let _ = self.action_tx.send(Action::ExportTheme(name.clone()));
+
+                                // 2. Generate and save complementary theme
+                                let is_dark = self.theme_editor.is_dark_theme();
+                                let _complementary = self.theme_editor.generate_complementary();
+                                let suffix = match is_dark {
+                                    true => "_light",
+                                    false => "_dark",
+                                };
+                                let _comp_name = format!("{}{}", name, suffix);
+
+                                // TODO: Implement saving of complementary theme
+                                // For now, we just save the primary one.
+                            }
+                            self.theme_editor.active = false;
+                            self.theme_editor.state = EditorState::Editing;
+                        }
+                        KeyCode::Esc => {
+                            // Cancel naming, go back to editing
+                            self.theme_editor.state = EditorState::Editing;
+                        }
+                        KeyCode::Char(c) => {
+                            self.theme_editor.name_input.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            self.theme_editor.name_input.pop();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+                EditorState::Editing => {
+                    match key.code {
+                        KeyCode::Up => {
+                            self.theme_editor.navigate_property(-1);
+                            self.theme = self.theme_editor.temp_theme.clone();
+                        }
+                        KeyCode::Down => {
+                            self.theme_editor.navigate_property(1);
+                            self.theme = self.theme_editor.temp_theme.clone();
+                        }
+                        KeyCode::Left => self.theme_editor.navigate_channel(false),
+                        KeyCode::Right => self.theme_editor.navigate_channel(true),
+                        KeyCode::Char('+') | KeyCode::Char('=') => {
+                            self.theme_editor.adjust_color(true);
+                            self.theme = self.theme_editor.temp_theme.clone();
+                        }
+                        KeyCode::Char('-') | KeyCode::Char('_') => {
+                            self.theme_editor.adjust_color(false);
+                            self.theme = self.theme_editor.temp_theme.clone();
+                        }
+                        KeyCode::Char('s') | KeyCode::Char('S') => {
+                            self.theme_editor.state = EditorState::Naming;
+                            return;
+                        }
+                        KeyCode::Esc => {
+                            self.theme_editor.active = false;
+                            return;
+                        }
+                        KeyCode::Char('e') | KeyCode::Char('E') => {
+                            self.theme_editor.active = false;
+                            return;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+
         // Map ViewMode to KeyBindingContext
         let context = match self.view_mode {
             ViewMode::List => KeyBindingContext::List,
@@ -953,6 +1037,10 @@ impl App {
                     let _ = tx.send(Action::ClearNotification);
                 });
             }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                // Toggle theme editor
+                self.theme_editor.toggle(&self.theme);
+            }
             KeyCode::Char('/') => {
                 if self.view_mode == ViewMode::List {
                     self.input_mode = InputMode::Search;
@@ -964,6 +1052,15 @@ impl App {
                 if !self.search_query.is_empty() {
                     self.search_query = crate::internal::search::SearchQuery::default();
                     self.temp_search_input.clear();
+                }
+            }
+            KeyCode::Tab => {
+                if self.show_help {
+                    // Toggle between page 1 and 2
+                    self.help_page = match self.help_page {
+                        1 => 2,
+                        _ => 1,
+                    };
                 }
             }
             _ => {}
@@ -1042,7 +1139,8 @@ impl App {
             Action::ExportTheme(name) => {
                 // Export current theme from theme editor
                 if self.theme_editor.active {
-                    match self.export_theme_to_file(&name) {
+                    // 1. Save current theme
+                    match self.export_theme_to_file(&name, None) {
                         Ok(path) => {
                             self.notification_message =
                                 Some(format!("Theme saved to {}", path.display()));
@@ -1052,6 +1150,19 @@ impl App {
                             self.notification_message = Some(format!("Error saving theme: {}", e));
                             self.notification_timer = Some(tokio::time::Instant::now());
                         }
+                    }
+
+                    // 2. Generate and save complementary theme
+                    let is_dark = self.theme_editor.is_dark_theme();
+                    let complementary = self.theme_editor.generate_complementary();
+                    let suffix = match is_dark {
+                        true => "_light",
+                        false => "_dark",
+                    };
+                    let comp_name = format!("{}{}", name, suffix);
+
+                    if let Err(e) = self.export_theme_to_file(&comp_name, Some(&complementary)) {
+                        eprintln!("Failed to save complementary theme: {}", e);
                     }
                 }
             }
@@ -1395,6 +1506,9 @@ impl App {
             }
             Action::ToggleHelp => {
                 self.show_help = !self.show_help;
+                if self.show_help {
+                    self.help_page = 1; // Reset to page 1 when opening help
+                }
             }
             Action::ArticleLoaded(list_type, id, content) => {
                 // Only apply the loaded article if it matches the currently-selected story
@@ -1715,12 +1829,16 @@ impl App {
         }
     }
 
-    fn export_theme_to_file(&self, name: &str) -> anyhow::Result<std::path::PathBuf> {
+    fn export_theme_to_file(
+        &self,
+        name: &str,
+        theme_override: Option<&crate::utils::theme_loader::TuiTheme>,
+    ) -> anyhow::Result<std::path::PathBuf> {
         use std::collections::HashMap;
         use std::fs;
         use std::path::PathBuf;
 
-        let theme = &self.theme_editor.temp_theme;
+        let theme = theme_override.unwrap_or(&self.theme_editor.temp_theme);
 
         // Helper to convert Color to hex string
         let color_to_hex = |color: ratatui::style::Color| -> String {

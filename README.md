@@ -84,6 +84,11 @@ src/
   - Collapse/expand support (up to 100 comments loaded)
 - Comment pagination with smooth line-by-line scrolling
 - Keyboard shortcuts help (`?` key)
+- **Interactive Theme Editor** (v0.6.3)
+  - Real-time theme customization with `E` key
+  - Visual overlay with property list and RGB sliders
+  - Live preview of changes
+  - Export custom themes to JSON
 
 ## Screenshots
 
