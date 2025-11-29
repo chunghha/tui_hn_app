@@ -52,4 +52,21 @@
     //         "k": ScrollArticleUp,
     //     },
     // ),
+
+    // UI Customization
+    // Adjust padding and customize the list view display
+    // ui: (
+    //     padding: (
+    //         horizontal: 1,  // Horizontal padding inside borders
+    //         vertical: 0,    // Vertical padding inside borders
+    //     ),
+    //     status_bar_format: "{mode} | {shortcuts}",  // Status bar format (currently not customizable beyond default)
+    //     list_view: (
+    //         show_domain: true,     // Show domain/source (e.g., "github.com")
+    //         show_score: true,      // Show story score/points
+    //         show_comments: true,   // Show comment count
+    //         show_age: true,        // Show relative time (e.g., "2h ago")
+    //         show_author: true,     // Show story author
+    //     ),
+    // ),
 )

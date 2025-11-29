@@ -95,10 +95,11 @@
   - Global and context-specific bindings with hierarchical resolution
   - Conflict detection (optional future enhancement)
 
-- [ ] **UI Customization**: More configurable UI elements
-  - Adjustable padding/margins
-  - Customizable status bar format
-  - List view format customization (show/hide fields)
+- [/] **UI Customization**: More configurable UI elements
+  - ✅ Implemented in v0.6.1 (padding only)
+  - Adjustable padding/margins (configurable via config.ron)
+  - Customizable status bar format (structure in place, token parsing TBD)
+  - List view format customization (structure in place, rendering logic TBD)
 
 - [ ] **Theme Editor**: Interactive theme builder
   - Preview theme changes in real-time

@@ -294,7 +294,12 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .padding(Padding::horizontal(1))
+                .padding(Padding::new(
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.vertical,
+                    app.config.ui.padding.vertical,
+                ))
                 .border_style(Style::default().fg(app.theme.border))
                 .title(title)
                 .title_style(Style::default().fg(app.theme.foreground)),
@@ -771,7 +776,12 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
     let p = Paragraph::new(status)
         .block(
             Block::default()
-                .padding(Padding::horizontal(1))
+                .padding(Padding::new(
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.vertical,
+                    app.config.ui.padding.vertical,
+                ))
                 .style(Style::default().bg(app.theme.selection_bg)),
         )
         .style(Style::default().fg(app.theme.selection_fg));

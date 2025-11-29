@@ -24,6 +24,62 @@ pub struct KeyBindingConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(default)]
+pub struct UIConfig {
+    pub padding: PaddingConfig,
+    pub status_bar_format: String,
+    pub list_view: ListViewConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct PaddingConfig {
+    pub horizontal: u16,
+    pub vertical: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct ListViewConfig {
+    pub show_domain: bool,
+    pub show_score: bool,
+    pub show_comments: bool,
+    pub show_age: bool,
+    pub show_author: bool,
+}
+
+impl Default for UIConfig {
+    fn default() -> Self {
+        Self {
+            padding: PaddingConfig::default(),
+            status_bar_format: "{mode} | {shortcuts}".to_string(),
+            list_view: ListViewConfig::default(),
+        }
+    }
+}
+
+impl Default for PaddingConfig {
+    fn default() -> Self {
+        Self {
+            horizontal: 1,
+            vertical: 0,
+        }
+    }
+}
+
+impl Default for ListViewConfig {
+    fn default() -> Self {
+        Self {
+            show_domain: true,
+            show_score: true,
+            show_comments: true,
+            show_age: true,
+            show_author: true,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
 pub struct AppConfig {
     /// Preferred theme name to apply (e.g., "Flexoki Light" / "Flexoki Dark")
     #[serde(default = "default_theme_name")]
@@ -45,6 +101,9 @@ pub struct AppConfig {
     /// Custom keybindings
     #[serde(default)]
     pub keybindings: Option<KeyBindingConfig>,
+    /// UI customization settings
+    #[serde(default)]
+    pub ui: UIConfig,
 }
 
 fn default_theme_name() -> String {
@@ -71,6 +130,7 @@ impl Default for AppConfig {
             auto_switch_dark_to_light: default_auto_switch_dark_to_light(),
             ghost_term_name: default_ghost_term_name(),
             keybindings: None,
+            ui: UIConfig::default(),
         }
     }
 }

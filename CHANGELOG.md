@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2025-11-28
+
+### Added
+- **UI Customization (Initial)**: Configurable padding for UI elements
+  - `padding` config option with `horizontal` and `vertical` settings
+  - Applied to most UI components (list view, detail view, article view, status bar)
+  - Configuration structures for future status bar format and list view customization
+  - Examples and documentation in `config.example.ron`
+
+### Technical
+- Added `UIConfig`, `PaddingConfig`, and `ListViewConfig` to `AppConfig`
+- Updated `view.rs` to use configurable padding instead of hardcoded values
+
 ## [0.6.0] - 2025-11-28
 
 ### Added
