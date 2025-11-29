@@ -156,34 +156,40 @@ impl ThemeEditor {
         let property = properties[self.selected_property];
         let current_color = property.get_color(&self.temp_theme);
 
-        if let Color::Rgb(r, g, b) = current_color {
-            let (new_r, new_g, new_b) = match self.selected_channel {
-                ColorChannel::Red => {
-                    let new_r = match increase {
-                        true => r.saturating_add(5),
-                        false => r.saturating_sub(5),
-                    };
-                    (new_r, g, b)
-                }
-                ColorChannel::Green => {
-                    let new_g = match increase {
-                        true => g.saturating_add(5),
-                        false => g.saturating_sub(5),
-                    };
-                    (r, new_g, b)
-                }
-                ColorChannel::Blue => {
-                    let new_b = match increase {
-                        true => b.saturating_add(5),
-                        false => b.saturating_sub(5),
-                    };
-                    (r, g, new_b)
-                }
-            };
-            property.set_color(&mut self.temp_theme, Color::Rgb(new_r, new_g, new_b));
-        } else {
-            // Convert non-RGB colors to RGB(128, 128, 128) as starting point
-            property.set_color(&mut self.temp_theme, Color::Rgb(128, 128, 128));
+        match current_color {
+            Color::Rgb(r, g, b) => {
+                let (new_r, new_g, new_b) = match self.selected_channel {
+                    ColorChannel::Red => {
+                        let new_r = if increase {
+                            r.saturating_add(5)
+                        } else {
+                            r.saturating_sub(5)
+                        };
+                        (new_r, g, b)
+                    }
+                    ColorChannel::Green => {
+                        let new_g = if increase {
+                            g.saturating_add(5)
+                        } else {
+                            g.saturating_sub(5)
+                        };
+                        (r, new_g, b)
+                    }
+                    ColorChannel::Blue => {
+                        let new_b = if increase {
+                            b.saturating_add(5)
+                        } else {
+                            b.saturating_sub(5)
+                        };
+                        (r, g, new_b)
+                    }
+                };
+                property.set_color(&mut self.temp_theme, Color::Rgb(new_r, new_g, new_b));
+            }
+            _ => {
+                // Convert non-RGB colors to RGB(128, 128, 128) as starting point
+                property.set_color(&mut self.temp_theme, Color::Rgb(128, 128, 128));
+            }
         }
     }
 
@@ -196,11 +202,12 @@ impl ThemeEditor {
     // Calculate luminance to determine if theme is dark
     // Formula: 0.2126*R + 0.7152*G + 0.0722*B
     pub fn is_dark_theme(&self) -> bool {
-        if let Color::Rgb(r, g, b) = self.temp_theme.background {
-            let lum = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
-            lum < 128.0
-        } else {
-            true // Default to dark if unknown
+        match self.temp_theme.background {
+            Color::Rgb(r, g, b) => {
+                let lum = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
+                lum < 128.0
+            }
+            _ => true, // Default to dark if unknown
         }
     }
 
@@ -210,10 +217,9 @@ impl ThemeEditor {
 
         // Helper to invert color
         let invert = |c: Color| -> Color {
-            if let Color::Rgb(r, g, b) = c {
-                Color::Rgb(255 - r, 255 - g, 255 - b)
-            } else {
-                c
+            match c {
+                Color::Rgb(r, g, b) => Color::Rgb(255 - r, 255 - g, 255 - b),
+                other => other,
             }
         };
 

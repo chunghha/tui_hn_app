@@ -39,14 +39,17 @@ impl Bookmarks {
         // Log the resolved config directory for diagnostics.
         info!(config_dir = %config_dir.display(), "Resolved config directory for bookmarks");
 
-        if !config_dir.exists() {
-            // Create the directory and log the creation.
-            fs::create_dir_all(&config_dir).with_context(|| {
-                format!("Failed to create config directory {}", config_dir.display())
-            })?;
-            info!(config_dir = %config_dir.display(), "Created config directory for bookmarks");
-        } else {
-            info!(config_dir = %config_dir.display(), "Config directory already exists");
+        match config_dir.exists() {
+            false => {
+                // Create the directory and log the creation.
+                fs::create_dir_all(&config_dir).with_context(|| {
+                    format!("Failed to create config directory {}", config_dir.display())
+                })?;
+                info!(config_dir = %config_dir.display(), "Created config directory for bookmarks");
+            }
+            true => {
+                info!(config_dir = %config_dir.display(), "Config directory already exists");
+            }
         }
 
         let file_path = config_dir.join("bookmarks.json");
@@ -74,13 +77,16 @@ impl Bookmarks {
     }
 
     pub fn save(&self) -> Result<()> {
-        if let Some(path) = &self.file_path {
-            let content =
-                serde_json::to_string_pretty(self).context("Failed to serialize bookmarks")?;
-            fs::write(path, content).context("Failed to write bookmarks file")?;
-            info!(bookmarks_file = %path.display(), "Saved bookmarks to file");
-        } else {
-            info!("Bookmarks.save() called but no file_path is set; skipping write");
+        match &self.file_path {
+            Some(path) => {
+                let content =
+                    serde_json::to_string_pretty(self).context("Failed to serialize bookmarks")?;
+                fs::write(path, content).context("Failed to write bookmarks file")?;
+                info!(bookmarks_file = %path.display(), "Saved bookmarks to file");
+            }
+            None => {
+                info!("Bookmarks.save() called but no file_path is set; skipping write");
+            }
         }
         Ok(())
     }

@@ -205,7 +205,8 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
 
     let items: Vec<ListItem> = stories_to_display
         .iter()
-        .map(|(_, story)| {
+        .enumerate()
+        .map(|(idx, (_, story))| {
             let title = story.title.as_deref().unwrap_or("No Title");
             let score = story.score.unwrap_or(0);
             let by = story.by.as_deref().unwrap_or("unknown");
@@ -225,35 +226,89 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                 .map(crate::utils::datetime::format_timestamp)
                 .unwrap_or_else(|| "unknown".to_string());
 
-            // Add bookmark indicator if story is bookmarked
+            // Show score with leading space for proper alignment
+            let score = format!("{:3} ", score);
+
+            // Check if story is bookmarked
             let bookmark_indicator = match app.bookmarks.contains(story.id) {
                 true => "★ ",
                 false => "",
             };
 
-            // Title line with score, bookmark indicator, and domain
-            let title_line = Line::from(vec![
-                Span::styled(format!("{} ", score), Style::default().fg(app.theme.score)),
-                Span::styled(
-                    bookmark_indicator,
-                    Style::default().fg(app.theme.selection_bg),
-                ),
-                Span::styled(title, Style::default().fg(app.theme.foreground)),
-                Span::styled(domain, Style::default().fg(app.theme.comment_time)),
-            ]);
+            // Build title line with optional fields based on config
+            let mut title_spans = vec![Span::styled(
+                format!("{:<4}", idx + 1),
+                Style::default().fg(app.theme.comment_time),
+            )];
 
-            // Metadata line with age, comments, and author
-            let meta_line = Line::from(vec![
-                Span::styled("    ", Style::default()), // Indent
-                Span::styled(time, Style::default().fg(app.theme.comment_time)),
-                Span::styled(" | ", Style::default().fg(app.theme.border)),
-                Span::styled(
+            // Add bookmark indicator
+            title_spans.push(Span::styled(
+                bookmark_indicator,
+                Style::default().fg(app.theme.selection_bg),
+            ));
+
+            // Add score if configured
+            if app.config.ui.list_view.show_score {
+                title_spans.push(Span::styled(
+                    format!("{} ", score),
+                    Style::default().fg(app.theme.score),
+                ));
+            }
+
+            title_spans.push(Span::styled(
+                title,
+                Style::default().fg(app.theme.foreground),
+            ));
+
+            // Add domain if configured
+            if app.config.ui.list_view.show_domain {
+                title_spans.push(Span::styled(
+                    domain,
+                    Style::default().fg(app.theme.comment_time),
+                ));
+            }
+
+            let title_line = Line::from(title_spans);
+
+            // Build metadata line with optional fields
+            let mut meta_spans = vec![Span::styled("    ", Style::default())]; // Indent
+            let mut first_field = true;
+
+            // Add time if configured
+            if app.config.ui.list_view.show_age {
+                meta_spans.push(Span::styled(
+                    time,
+                    Style::default().fg(app.theme.comment_time),
+                ));
+                first_field = false;
+            }
+
+            // Add comments if configured
+            if app.config.ui.list_view.show_comments {
+                if !first_field {
+                    meta_spans.push(Span::styled(" | ", Style::default().fg(app.theme.border)));
+                }
+                meta_spans.push(Span::styled(
                     format!("{} comments", comments),
                     Style::default().fg(app.theme.comment_time),
-                ),
-                Span::styled(" | by ", Style::default().fg(app.theme.border)),
-                Span::styled(by, Style::default().fg(app.theme.comment_author)),
-            ]);
+                ));
+                first_field = false;
+            }
+
+            // Always show author
+            match first_field {
+                false => meta_spans.push(Span::styled(
+                    " | by ",
+                    Style::default().fg(app.theme.border),
+                )),
+                true => meta_spans.push(Span::styled("by ", Style::default().fg(app.theme.border))),
+            }
+            meta_spans.push(Span::styled(
+                by,
+                Style::default().fg(app.theme.comment_author),
+            ));
+
+            let meta_line = Line::from(meta_spans);
 
             ListItem::new(vec![title_line, meta_line])
         })
@@ -351,7 +406,12 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
+                    .padding(Padding::new(
+                        app.config.ui.padding.horizontal,
+                        app.config.ui.padding.horizontal,
+                        app.config.ui.padding.vertical,
+                        app.config.ui.padding.vertical,
+                    ))
                     .border_style(Style::default().fg(app.theme.border))
                     .title("Story Details")
                     .title_style(Style::default().fg(app.theme.foreground)),
@@ -453,7 +513,12 @@ fn render_detail(app: &mut App, f: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .padding(Padding::horizontal(1))
+                    .padding(Padding::new(
+                        app.config.ui.padding.horizontal,
+                        app.config.ui.padding.horizontal,
+                        app.config.ui.padding.vertical,
+                        app.config.ui.padding.vertical,
+                    ))
                     .border_style(Style::default().fg(app.theme.border))
                     .title(comments_title)
                     .title_style(Style::default().fg(app.theme.foreground)),
@@ -496,7 +561,12 @@ fn render_article(app: &App, f: &mut Frame, area: Rect) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
+                        .padding(Padding::new(
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.vertical,
+                            app.config.ui.padding.vertical,
+                        ))
                         .border_style(Style::default().fg(app.theme.border))
                         .title("Story Details")
                         .title_style(Style::default().fg(app.theme.foreground)),
@@ -626,7 +696,12 @@ fn render_article(app: &App, f: &mut Frame, area: Rect) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
+                        .padding(Padding::new(
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.vertical,
+                            app.config.ui.padding.vertical,
+                        ))
                         .border_style(Style::default().fg(app.theme.border))
                         .title("Article View (Tab to view Comments)")
                         .title_style(Style::default().fg(app.theme.foreground)),
@@ -652,7 +727,12 @@ fn render_article(app: &App, f: &mut Frame, area: Rect) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .padding(Padding::horizontal(1))
+                        .padding(Padding::new(
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.horizontal,
+                            app.config.ui.padding.vertical,
+                            app.config.ui.padding.vertical,
+                        ))
                         .border_style(Style::default().fg(app.theme.border))
                         .title("Article View (Tab to view Comments)")
                         .title_style(Style::default().fg(app.theme.foreground)),
@@ -687,20 +767,114 @@ fn render_top_bar(app: &App, f: &mut Frame, area: Rect) {
         .alignment(Alignment::Right)
         .block(
             Block::default()
-                .padding(Padding::horizontal(1))
+                .padding(Padding::new(
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.horizontal,
+                    app.config.ui.padding.vertical,
+                    app.config.ui.padding.vertical,
+                ))
                 .style(Style::default().bg(app.theme.background)),
         )
         .style(Style::default().fg(app.theme.foreground));
     f.render_widget(p, area);
 }
 
+/// Parse status bar format tokens and replace with actual values
+fn parse_status_bar_format(app: &App, format: &str) -> String {
+    let mut result = format.to_string();
+
+    // {mode} - Current view mode
+    let mode_str = match app.view_mode {
+        ViewMode::List => "List",
+        ViewMode::StoryDetail => "Story",
+        ViewMode::Article => "Article",
+        ViewMode::Bookmarks => "Bookmarks",
+        ViewMode::History => "History",
+    };
+    result = result.replace("{mode}", mode_str);
+
+    // {category} - Story category
+    let category_str = match app.current_list_type {
+        crate::api::StoryListType::Top => "Top",
+        crate::api::StoryListType::New => "New",
+        crate::api::StoryListType::Best => "Best",
+        crate::api::StoryListType::Ask => "Ask",
+        crate::api::StoryListType::Show => "Show",
+        crate::api::StoryListType::Job => "Job",
+    };
+    result = result.replace("{category}", category_str);
+
+    // {count} - Loaded story count
+    result = result.replace("{count}", &app.loaded_count.to_string());
+
+    // {total} - Total story count
+    result = result.replace("{total}", &app.story_ids.len().to_string());
+
+    // {sort} - Sort field
+    let sort_str = match app.sort_by {
+        crate::internal::ui::sort::SortBy::Score => "Score",
+        crate::internal::ui::sort::SortBy::Comments => "Comments",
+        crate::internal::ui::sort::SortBy::Time => "Time",
+    };
+    result = result.replace("{sort}", sort_str);
+
+    // {order} - Sort order
+    let order_str = match app.sort_order {
+        crate::internal::ui::sort::SortOrder::Ascending => "↑",
+        crate::internal::ui::sort::SortOrder::Descending => "↓",
+    };
+    result = result.replace("{order}", order_str);
+
+    // {search} - Search query
+    let search_str = app.search_query.query.as_str();
+    result = result.replace("{search}", search_str);
+
+    // {spinner} - Loading spinner
+    let spinner_str = match (app.loading, app.comments_loading, app.article_loading) {
+        (true, _, _) | (_, true, _) | (_, _, true) => app.get_spinner_char().to_string(),
+        _ => String::new(),
+    };
+    result = result.replace("{spinner}", &spinner_str);
+
+    // {theme} - Current theme name
+    let theme_name = app
+        .available_themes
+        .get(app.current_theme_index)
+        .map(|(filename, _)| {
+            std::path::Path::new(filename)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown")
+        })
+        .unwrap_or("Default");
+    result = result.replace("{theme}", theme_name);
+
+    // {shortcuts} - Context-sensitive shortcuts (fallback to default behavior)
+    let shortcuts = match app.view_mode {
+        ViewMode::List => "j/k:Nav | Enter:View | b:Bookmark | ?:Help | q:Quit",
+        ViewMode::StoryDetail => "Esc:Back | o:Browser | Tab:Article | ?:Help",
+        ViewMode::Article => "Esc:Back | j/k:Scroll | Tab:Comments | ?:Help",
+        ViewMode::Bookmarks => "Enter:View | Esc:Back | ?:Help",
+        ViewMode::History => "Enter:View | X:Clear | Esc:Back | ?:Help",
+    };
+    result = result.replace("{shortcuts}", shortcuts);
+
+    result
+}
+
 fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
+    // Check if custom format is configured
     let status = match (
+        app.config.ui.status_bar_format.is_empty(),
         app.loading || app.comments_loading || app.article_loading,
         &app.input_mode,
         &app.view_mode,
     ) {
-        (true, _, &ViewMode::List) if !app.story_ids.is_empty() => {
+        (false, _, _, _) => {
+            // Use custom format with token parsing
+            parse_status_bar_format(app, &app.config.ui.status_bar_format)
+        }
+        (true, true, _, &ViewMode::List) if !app.story_ids.is_empty() => {
             // Show animated spinner with loading description and story counts
             let spinner = app.get_spinner_char();
             let desc = app
@@ -714,7 +888,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 app.story_ids.len()
             )
         }
-        (true, _, _) => {
+        (true, true, _, _) => {
             // Show animated spinner with loading description
             let spinner = app.get_spinner_char();
             let desc = app
@@ -722,11 +896,11 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 .unwrap_or_else(|| "Loading...".to_string());
             format!("{} {}", spinner, desc)
         }
-        (false, &InputMode::Search, _) => {
+        (true, false, &InputMode::Search, _) => {
             // Enhanced status bar for search mode with shortcuts
             "Search: Type | ↑↓: History | Ctrl+M/F2: Mode | Ctrl+R/F3: Regex | Enter: OK | Esc: Cancel".to_string()
         }
-        (false, _, &ViewMode::List) => {
+        (true, false, _, &ViewMode::List) => {
             let loaded_info = match app.story_ids.len() {
                 0 => String::new(),
                 len => format!(" | {}/{}", app.loaded_count, len),
@@ -735,24 +909,25 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 "" => String::new(),
                 q => format!(" | Filter: {}", q),
             };
-            let clear_hint = match app.search_query.is_empty() {
-                false => " | Q: Clear",
-                true => "",
+            let clear_hint = if app.search_query.is_empty() {
+                ""
+            } else {
+                " | Q: Clear"
             };
             format!(
                 "1-6: Cat | /: Search | j/k: Nav | m: More | A: All | Enter: View | b: Bookmark | B/H: View B/H | t: Theme | ?: Help | q: Quit{}{}{}",
                 loaded_info, filter_hint, clear_hint
             )
         }
-        (false, _, &ViewMode::StoryDetail) => {
+        (true, false, _, &ViewMode::StoryDetail) => {
             "Esc/q: Back | o: Browser | b: Bookmark | n: More Comments | Tab: Article | t: Theme | ?: Help"
                 .to_string()
         }
-        (false, _, &ViewMode::Article) => {
+        (true, false, _, &ViewMode::Article) => {
             "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme | ?: Help"
                 .to_string()
         }
-        (false, _, &ViewMode::Bookmarks) => {
+        (true, false, _, &ViewMode::Bookmarks) => {
             // Show a compact status for bookmarks view, including count
             let count = app.bookmarks.stories.len();
             let bookmark_info = match count {
@@ -764,7 +939,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 bookmark_info
             )
         }
-        (false, _, &ViewMode::History) => {
+        (true, false, _, &ViewMode::History) => {
             let count = app.history.stories.len();
             let history_info = match count {
                 0 => "No history".to_string(),
@@ -911,7 +1086,12 @@ fn render_help_overlay(app: &App, f: &mut Frame) {
                 .bg(app.theme.selection_bg)
                 .add_modifier(Modifier::BOLD),
         )
-        .padding(Padding::horizontal(2))
+        .padding(Padding::new(
+            app.config.ui.padding.horizontal,
+            app.config.ui.padding.horizontal,
+            app.config.ui.padding.vertical,
+            app.config.ui.padding.vertical,
+        ))
         .style(Style::default().bg(app.theme.background));
 
     let inner_area = block.inner(popup_area);
@@ -1190,13 +1370,12 @@ fn render_theme_editor_overlay(app: &App, f: &mut Frame) {
         .enumerate()
         .map(|(i, p)| {
             let is_selected = i == app.theme_editor.selected_property;
-            let style = if is_selected {
-                Style::default()
+            let style = match is_selected {
+                true => Style::default()
                     .fg(app.theme.selection_fg)
                     .bg(app.theme.selection_bg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.theme.foreground)
+                    .add_modifier(Modifier::BOLD),
+                false => Style::default().fg(app.theme.foreground),
             };
             ListItem::new(p.name()).style(style)
         })
@@ -1245,12 +1424,11 @@ fn render_theme_editor_overlay(app: &App, f: &mut Frame) {
         let render_channel =
             |f: &mut Frame, area: Rect, name: &str, value: u8, channel: ColorChannel| {
                 let is_selected = app.theme_editor.selected_channel == channel;
-                let label_style = if is_selected {
-                    Style::default()
+                let label_style = match is_selected {
+                    true => Style::default()
                         .fg(app.theme.selection_bg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(app.theme.foreground)
+                        .add_modifier(Modifier::BOLD),
+                    false => Style::default().fg(app.theme.foreground),
                 };
 
                 let gauge = ratatui::widgets::Gauge::default()

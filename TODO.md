@@ -107,33 +107,12 @@
   - Export custom themes to JSON
   - Interactive UI overlay (deferred to v0.6.3)
 
-### Technical Improvements
-- [ ] **Error Handling**: Better user-facing error messages
-  - Show network errors in notification
-  - Retry mechanism for failed requests
-  - Fallback strategies
-
-- [ ] **Logging**: Better tracing and debugging
-  - Log rotation configuration in config.ron
-  - Different log levels per module
-  - Log viewer in app (debug mode)
-
-- [ ] **Testing**: Expand test coverage
-  - Integration tests for UI flows
-  - Mock API responses for reliable testing
-  - Snapshot tests for rendering
-
-- [ ] **Async Optimization**: Improve async handling
-  - Concurrent story fetching (batch API calls)
-  - Better cancellation of in-flight requests when switching views
-  - Rate limiting to respect HN API best practices
-
-### Accessibility
-- [ ] **Screen Reader Support**: Improve accessibility
-  - Better text descriptions
-  - Announce loading states
-
-- [ ] **High Contrast Themes**: Built-in high contrast mode
+- [ ] **Theme Save Location**: Configurable theme storage (Pre-1.0)
+  - Allow custom directory via config.ron
+  - Support for user config directory (e.g., `~/.config/tui-hn-app/themes/`)
+  - Fallback to default if custom location is not writable
+  - Auto-create directory if it doesn't exist
+  - Currently hardcoded to `./themes/`
 
 ## 📝 Known Issues
 - [ ] Article scroll position doesn't always persist when toggling views
@@ -224,21 +203,78 @@ Based on current codebase maturity, I recommend prioritizing:
 - ✅ Hex color display and preview box
 - ✅ Automatic complementary theme generation (dark/light variants)
 
-#### v0.6.4 - UI Customization Completion (Planned)
-- [ ] Status bar format token parsing
-- [ ] List view field visibility rendering
-- [ ] Complete remaining padding conversions (7 locations)
+#### v0.6.4 - UI Customization Completion (Completed - 2025-11-29)
+- [x] Status bar format token parsing
+- [x] List view field visibility rendering
+- [x] Complete remaining padding conversions (7 locations)
+- [x] Code quality improvements (pattern matching refactoring)
 
-#### v0.6.5 - Theme Save Location Configuration (Planned)
-- [ ] Configurable theme save location (currently hardcoded to `./themes/`)
-  - Allow custom directory via config.ron
-  - Support for user config directory (e.g., `~/.config/tui-hn-app/themes/`)
-  - Fallback to default if custom location is not writable
-  - Auto-create directory if it doesn't exist
+---
 
-### 🏁 v1.0.0 (Stable)
-- Complete feature parity with web interface
-- Comprehensive test coverage
-- Performance optimizations
-- All accessibility features
+### 🔧 v0.7.x - Technical Improvements Series
 
+#### v0.7.0 - Error Handling & Logging (Planned)
+- [ ] **Better Error Handling**: User-facing error messages
+  - Show network errors in notification
+  - Retry mechanism for failed requests
+  - Fallback strategies
+  - Graceful degradation for API failures
+- [ ] **Enhanced Logging**: Better tracing and debugging
+  - Log rotation configuration in config.ron
+  - Different log levels per module
+  - Optional log viewer in app (debug mode)
+  - Performance metrics logging
+
+#### v0.7.1 - Testing & Quality (Planned)
+- [ ] **Expanded Test Coverage**
+  - Integration tests for UI flows
+  - Mock API responses for reliable testing
+  - Snapshot tests for rendering
+  - Property-based tests for edge cases
+- [ ] **CI/CD Improvements**
+  - Automated testing on multiple platforms
+  - Release automation
+  - Benchmark tracking
+
+#### v0.7.2 - Performance Optimization (Planned)
+- [ ] **Async Optimization**: Improve async handling
+  - Concurrent story fetching (batch API calls)
+  - Better cancellation of in-flight requests when switching views
+  - Rate limiting to respect HN API best practices
+  - Request deduplication
+- [ ] **Rendering Performance**
+  - Optimize list rendering for large story counts
+  - Lazy loading for comment trees
+  - Diff-based rendering where applicable
+
+#### v0.7.3 - Accessibility (Planned)
+- [ ] **Screen Reader Support**
+  - Better text descriptions
+  - Announce loading states
+  - Semantic navigation hints
+- [ ] **High Contrast Themes**
+  - Built-in high contrast mode
+  - WCAG compliance checking
+
+---
+
+### 🏁 v1.0.0 (Stable Release)
+
+**Target**: Feature-complete, production-ready TUI Hacker News client
+
+**Requirements**:
+- ✅ Complete feature parity with basic web interface
+- ✅ All v0.6.x UI customization features implemented
+- [ ] All v0.7.x technical improvements completed
+- [ ] Comprehensive test coverage (>80%)
+- [ ] Performance benchmarks met
+- [ ] All accessibility features implemented
+- [ ] Documentation complete (user guide, developer docs)
+- [ ] Stable API for themes and configuration
+
+**Post-1.0 Roadmap**:
+- Plugin/extension system
+- Cloud sync for bookmarks/history
+- Multi-account support
+- Advanced filtering and search
+- Custom layouts and views

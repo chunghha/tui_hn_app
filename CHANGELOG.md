@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2025-11-29
+
+### Added
+- **Status Bar Token Parsing**: Customizable status bar with format tokens
+  - Token support: `{mode}`, `{category}`, `{count}`, `{total}`, `{sort}`, `{order}`, `{search}`, `{spinner}`, `{theme}`, `{shortcuts}`
+  - Configure via `config.ui.status_bar_format` in `config.ron`
+  - Real-time token replacement based on app state
+  - Falls back to default behavior if not configured
+- **List View Field Visibility**: Show/hide individual fields in story list
+  - Configurable fields: score, comments, domain, age, author
+  - Configure via `config.ui.list_view` settings
+  - Smart separator handling based on visible fields
+- **Complete Padding Customization**: All UI components now use configurable padding
+  - Converted 7 remaining hardcoded padding locations
+  - Consistent padding across story details, comments, articles, help overlay, and top bar
+
+### Changed
+- Extensive code quality improvements with pattern matching refactoring
+  - Replaced if-else blocks with match expressions throughout codebase
+  - Affected files: `app.rs`, `keybindings.rs`, `theme_editor.rs`, `view.rs`
+  - More idiomatic Rust code with better exhaustiveness checking
+- Status bar rendering now uses comprehensive match for all view modes
+- List item rendering dynamically builds spans based on field visibility config
+
+### Technical
+- Added `parse_status_bar_format()` helper function for token parsing
+- Improved list view rendering with `enumerate()` for proper indexing
+- Better separation of concerns in status bar rendering logic
+
 ## [0.6.3] - 2025-11-29
 
 ### Added

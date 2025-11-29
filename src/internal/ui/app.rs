@@ -258,13 +258,10 @@ impl<'de> serde::Deserialize<'de> for Action {
                 }
 
                 match variant_name.as_deref() {
-                    Some("LoadStories") => {
-                        if let Some(list_type) = inner_data {
-                            Ok(Action::LoadStories(list_type))
-                        } else {
-                            Err(de::Error::missing_field("LoadStories inner value"))
-                        }
-                    }
+                    Some("LoadStories") => match inner_data {
+                        Some(list_type) => Ok(Action::LoadStories(list_type)),
+                        None => Err(de::Error::missing_field("LoadStories inner value")),
+                    },
                     Some(v) => self.visit_str(v),
                     None => Err(de::Error::missing_field("variant")),
                 }
@@ -839,26 +836,29 @@ impl App {
             KeyCode::Down => {
                 // Navigate history down (newer)
                 if let Some(current) = self.history_index {
-                    if current > 0 {
-                        let new_index = current - 1;
-                        self.history_index = Some(new_index);
-                        if let Some(query) = self.search_history.get_recent(new_index) {
-                            self.temp_search_input = query.clone();
+                    match current {
+                        0 => {
+                            // At the bottom, clear to empty
+                            self.history_index = None;
+                            self.temp_search_input.clear();
                             self.search_query = crate::internal::search::SearchQuery::new(
-                                query.clone(),
+                                String::new(),
                                 self.search_query.mode,
                                 self.search_query.search_type,
                             );
                         }
-                    } else {
-                        // At the bottom, clear to empty
-                        self.history_index = None;
-                        self.temp_search_input.clear();
-                        self.search_query = crate::internal::search::SearchQuery::new(
-                            String::new(),
-                            self.search_query.mode,
-                            self.search_query.search_type,
-                        );
+                        n => {
+                            let new_index = n - 1;
+                            self.history_index = Some(new_index);
+                            if let Some(query) = self.search_history.get_recent(new_index) {
+                                self.temp_search_input = query.clone();
+                                self.search_query = crate::internal::search::SearchQuery::new(
+                                    query.clone(),
+                                    self.search_query.mode,
+                                    self.search_query.search_type,
+                                );
+                            }
+                        }
                     }
                 }
             }

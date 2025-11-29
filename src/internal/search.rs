@@ -90,13 +90,10 @@ impl SearchQuery {
     pub fn matches(&self, text: &str) -> bool {
         match self.search_type {
             SearchType::Literal => text.to_lowercase().contains(&self.query.to_lowercase()),
-            SearchType::Regex => {
-                if let Some(ref re) = self.compiled_regex {
-                    re.is_match(text)
-                } else {
-                    false
-                }
-            }
+            SearchType::Regex => match &self.compiled_regex {
+                Some(re) => re.is_match(text),
+                None => false,
+            },
         }
     }
 }

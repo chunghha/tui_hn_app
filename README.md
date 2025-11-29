@@ -89,6 +89,11 @@ src/
   - Visual overlay with property list and RGB sliders
   - Live preview of changes
   - Export custom themes to JSON
+  - Theme naming with auto-complementary generation
+- **UI Customization** (v0.6.4)
+  - Customizable status bar with format tokens
+  - Show/hide list view fields (score, comments, domain, age)
+  - Configurable padding for all UI components
 
 ## Screenshots
 
@@ -111,6 +116,10 @@ Important config keys:
 - `auto_switch_dark_to_light` — automatic theme switching based on terminal.
 - `ghost_term_name` — terminal name override for theme switching.
 - `keybindings` — custom key mappings (optional, see `config.example.ron` for examples).
+- `ui` — UI customization options (v0.6.4+):
+  - `padding` — horizontal and vertical padding for UI elements
+  - `status_bar_format` — custom status bar with format tokens
+  - `list_view` — show/hide individual fields in story list
 
 Example (abbreviated):
 ```ron
@@ -131,6 +140,29 @@ Example (abbreviated):
     // where explicit Dark/Light variants in `theme_name` are honored verbatim.
     // Defaults to "xterm-ghostty".
     ghost_term_name: "xterm-ghostty",
+
+    // Optional: UI Customization (v0.6.4+)
+    ui: (
+        // Padding for UI elements
+        padding: (
+            horizontal: 1,
+            vertical: 0,
+        ),
+        
+        // Custom status bar format with tokens
+        // Available tokens: {mode}, {category}, {count}, {total}, {sort}, {order},
+        //                   {search}, {spinner}, {theme}, {shortcuts}
+        status_bar_format: "{spinner} {mode} | {category} | {count}/{total} | {shortcuts}",
+        
+        // List view field visibility
+        list_view: (
+            show_domain: true,
+            show_score: true,
+            show_comments: true,
+            show_age: true,
+            show_author: true,
+        ),
+    ),
 
     // Optional: Custom keybindings (uncomment and customize as needed)
     // keybindings: (

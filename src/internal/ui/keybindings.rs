@@ -75,10 +75,13 @@ impl KeyBindingMap {
     pub fn merge_config(&mut self, config: &crate::config::KeyBindingConfig) {
         let mut merge = |ctx: KeyBindingContext, bindings: &HashMap<String, Action>| {
             for (key_str, action) in bindings {
-                if let Some(key_event) = parse_key_str(key_str) {
-                    self.add_binding(ctx, key_event, action.clone());
-                } else {
-                    tracing::warn!("Invalid key string in config: {}", key_str);
+                match parse_key_str(key_str) {
+                    Some(key_event) => {
+                        self.add_binding(ctx, key_event, action.clone());
+                    }
+                    None => {
+                        tracing::warn!("Invalid key string in config: {}", key_str);
+                    }
                 }
             }
         };
@@ -126,19 +129,20 @@ pub fn parse_key_str(key_str: &str) -> Option<KeyEvent> {
     let parts: Vec<&str> = key_str.split('+').collect();
 
     let mut modifiers = KeyModifiers::empty();
-    let key_part = if parts.len() > 1 {
-        // Has modifiers
-        for modifier in &parts[..parts.len() - 1] {
-            match modifier.to_lowercase().as_str() {
-                "ctrl" => modifiers |= KeyModifiers::CONTROL,
-                "shift" => modifiers |= KeyModifiers::SHIFT,
-                "alt" => modifiers |= KeyModifiers::ALT,
-                _ => return None, // Invalid modifier
+    let key_part = match parts.as_slice() {
+        [single] => *single,
+        multiple => {
+            // Has modifiers (all elements except the last)
+            for modifier in &multiple[..multiple.len() - 1] {
+                match modifier.to_lowercase().as_str() {
+                    "ctrl" => modifiers |= KeyModifiers::CONTROL,
+                    "shift" => modifiers |= KeyModifiers::SHIFT,
+                    "alt" => modifiers |= KeyModifiers::ALT,
+                    _ => return None, // Invalid modifier
+                }
             }
+            multiple[multiple.len() - 1]
         }
-        parts[parts.len() - 1]
-    } else {
-        parts[0]
     };
 
     let code = match key_part {
