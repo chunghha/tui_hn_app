@@ -1267,7 +1267,7 @@ impl App {
                 let tx = self.action_tx.clone();
 
                 tokio::spawn(async move {
-                    match api.fetch_story_ids(list_type) {
+                    match api.fetch_story_ids(list_type).await {
                         Ok(ids) => {
                             // Send all IDs first
                             let all_ids = ids.clone();
@@ -1277,7 +1277,7 @@ impl App {
                             let ids_to_fetch = ids.iter().take(20).copied().collect::<Vec<_>>();
                             let mut stories = Vec::new();
                             for id in &ids_to_fetch {
-                                if let Ok(story) = api.fetch_story_content(*id) {
+                                if let Ok(story) = api.fetch_story_content(*id).await {
                                     stories.push(story);
                                 }
                             }
@@ -1341,7 +1341,7 @@ impl App {
                         tokio::spawn(async move {
                             let mut stories = Vec::new();
                             for id in &ids_to_fetch {
-                                if let Ok(story) = api.fetch_story_content(*id) {
+                                if let Ok(story) = api.fetch_story_content(*id).await {
                                     stories.push(story);
                                 }
                             }
@@ -1395,7 +1395,7 @@ impl App {
                                     tokio::spawn(async move {
                                         let mut stories = Vec::new();
                                         for (i, id) in ids_to_fetch.iter().enumerate() {
-                                            if let Ok(story) = api.fetch_story_content(*id) {
+                                            if let Ok(story) = api.fetch_story_content(*id).await {
                                                 stories.push(story);
                                             }
                                             let _ = tx.send(Action::StoryLoadingProgress(i + 1));
@@ -1443,7 +1443,7 @@ impl App {
                     // Capture the list/category this selection came from for the response.
                     let list_for_request = self.current_list_type;
                     tokio::spawn(async move {
-                        match api_clone.fetch_article_content(&url) {
+                        match api_clone.fetch_article_content(&url).await {
                             Ok(content) => {
                                 let _ = tx_clone.send(Action::ArticleLoaded(
                                     list_for_request,
@@ -1471,7 +1471,7 @@ impl App {
                         let tx_clone = tx.clone();
                         tokio::spawn(async move {
                             // Use fetch_comment_tree to get threaded comments
-                            if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids) {
+                            if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids).await {
                                 let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
                             }
                         });
@@ -1524,7 +1524,7 @@ impl App {
                             let list_type = self.current_list_type;
                             let story_id = story.id;
                             tokio::spawn(async move {
-                                match api.fetch_article_content(&url) {
+                                match api.fetch_article_content(&url).await {
                                     Ok(content) => {
                                         let _ = tx.send(Action::ArticleLoaded(
                                             list_type, story_id, content,

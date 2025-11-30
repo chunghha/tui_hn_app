@@ -255,13 +255,19 @@ Based on current codebase maturity, I recommend prioritizing:
   - [ ] Release automation (Deferred)
   - [ ] Benchmark tracking (Deferred)
 
-#### v0.7.2 - Performance Optimization (Planned)
-- [ ] **Async Optimization**: Improve async handling
+#### v0.7.2 - Performance Optimization (In Progress - 2025-11-30)
+- [x] **Async Migration (Phase 1)**: Convert API service to async
+  - ✅ Converted all API methods from blocking to async (`reqwest::blocking` → `reqwest` async)
+  - ✅ Fixed recursive async with `Box::pin` + `Send` bound
+  - ✅ Updated all App integration points with `.await`
+  - ✅ Converted all tests to async (`#[tokio::test]`)
+  - ✅ All 77 tests passing
+- [ ] **Concurrent Fetching (Phase 2)**: Improve async handling (Deferred)
   - Concurrent story fetching (batch API calls)
   - Better cancellation of in-flight requests when switching views
   - Rate limiting to respect HN API best practices
   - Request deduplication
-- [ ] **Rendering Performance**
+- [ ] **Rendering Performance** (Deferred)
   - Optimize list rendering for large story counts
   - Lazy loading for comment trees
   - Diff-based rendering where applicable

@@ -2,7 +2,7 @@ use crate::internal::cache::Cache;
 use crate::internal::models::{Article, Comment, Story};
 use crate::utils::html_parser::parse_article_html;
 use anyhow::{Context, Result};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -46,7 +46,7 @@ pub fn get_story_list_url(list_type: StoryListType) -> String {
 
 /// HTTP API service for fetching Hacker News data.
 ///
-/// This service uses `reqwest::blocking::Client` and returns `anyhow::Result` with
+/// This service uses async `reqwest::Client` and returns `anyhow::Result` with
 /// contextualized errors to preserve diagnostic information instead of erasing it
 /// into plain strings.
 #[derive(Clone)]
@@ -62,7 +62,7 @@ pub struct ApiService {
 }
 
 impl ApiService {
-    /// Create a new `ApiService` with a default reqwest blocking client.
+    /// Create a new `ApiService` with a default async reqwest client.
     pub fn new(
         network_config: crate::config::NetworkConfig,
         enable_performance_metrics: bool,
@@ -105,7 +105,7 @@ impl ApiService {
     /// Generic helper to GET a URL and deserialize the JSON body into `T`.
     /// Retries on network errors and timeouts with exponential backoff.
     #[tracing::instrument(skip(self), fields(url = %url))]
-    fn get_json<T>(&self, url: &str) -> Result<T>
+    async fn get_json<T>(&self, url: &str) -> Result<T>
     where
         T: DeserializeOwned,
     {
@@ -115,13 +115,14 @@ impl ApiService {
 
         loop {
             attempt += 1;
-            let resp_result = self.client.get(url).send();
+            let resp_result = self.client.get(url).send().await;
 
             match resp_result {
                 Ok(resp) => {
                     // Successful connection: parse JSON
                     let parsed = resp
                         .json::<T>()
+                        .await
                         .with_context(|| format!("failed to parse JSON response from {}", url))?;
                     if self.enable_performance_metrics {
                         tracing::debug!(elapsed = ?start.elapsed(), url = %url, attempt = attempt, "GET JSON successful");
@@ -152,8 +153,8 @@ impl ApiService {
                         delay
                     );
 
-                    // Wait before retrying
-                    std::thread::sleep(Duration::from_millis(delay));
+                    // Wait before retrying (async sleep)
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
 
                     // Exponential backoff with cap
                     delay = (delay * 2).min(self.network_config.max_retry_delay_ms);
@@ -164,11 +165,12 @@ impl ApiService {
 
     /// Fetch a list of story IDs for the given list type (e.g., top, new).
     #[tracing::instrument(skip(self), fields(list_type = ?list_type))]
-    pub fn fetch_story_ids(&self, list_type: StoryListType) -> Result<Vec<u32>> {
+    pub async fn fetch_story_ids(&self, list_type: StoryListType) -> Result<Vec<u32>> {
         let start = std::time::Instant::now();
         let url = format!("{}{}.json", self.get_base_url(), list_type.as_api_str());
         let result: Vec<u32> = self
             .get_json(&url)
+            .await
             .with_context(|| format!("fetch_story_ids failed for list {:?}", list_type))?;
 
         if self.enable_performance_metrics {
@@ -179,7 +181,7 @@ impl ApiService {
 
     /// Fetch a single story item by id.
     #[tracing::instrument(skip(self), fields(id = %id))]
-    pub fn fetch_story_content(&self, id: u32) -> Result<Story> {
+    pub async fn fetch_story_content(&self, id: u32) -> Result<Story> {
         // Check cache first
         if let Some(story) = self.story_cache.get(&id) {
             tracing::trace!("Cache hit for story {}", id);
@@ -195,6 +197,7 @@ impl ApiService {
         let url = format!("{}item/{}.json", self.get_base_url(), id);
         let story: Story = self
             .get_json(&url)
+            .await
             .with_context(|| format!("fetch_story_content failed for id {}", id))?;
 
         // Cache the result
@@ -207,7 +210,7 @@ impl ApiService {
 
     /// Fetch a single comment item by id.
     #[tracing::instrument(skip(self), fields(id = %id))]
-    pub fn fetch_comment_content(&self, id: u32) -> Result<Comment> {
+    pub async fn fetch_comment_content(&self, id: u32) -> Result<Comment> {
         // Check cache first
         if let Some(comment) = self.comment_cache.get(&id) {
             tracing::trace!("Cache hit for comment {}", id);
@@ -223,6 +226,7 @@ impl ApiService {
         let url = format!("{}item/{}.json", self.get_base_url(), id);
         let comment: Comment = self
             .get_json(&url)
+            .await
             .with_context(|| format!("fetch_comment_content failed for id {}", id))?;
 
         // Cache the result
@@ -236,7 +240,7 @@ impl ApiService {
     /// Fetch a tree of comments starting from the given root IDs.
     /// Returns a flattened list of CommentRows in DFS order.
     #[tracing::instrument(skip(self, root_ids), fields(root_count = root_ids.len()))]
-    pub fn fetch_comment_tree(
+    pub async fn fetch_comment_tree(
         &self,
         root_ids: Vec<u32>,
     ) -> Result<Vec<crate::internal::models::CommentRow>> {
@@ -250,7 +254,8 @@ impl ApiService {
             if total_fetched >= MAX_COMMENTS {
                 break;
             }
-            self.fetch_comment_recursive(id, 0, None, &mut rows, &mut total_fetched)?;
+            self.fetch_comment_recursive(id, 0, None, &mut rows, &mut total_fetched)
+                .await?;
         }
         if self.enable_performance_metrics {
             tracing::debug!(elapsed = ?start.elapsed(), fetched = total_fetched, "Fetched comment tree");
@@ -258,52 +263,55 @@ impl ApiService {
         Ok(rows)
     }
 
-    fn fetch_comment_recursive(
-        &self,
+    fn fetch_comment_recursive<'a>(
+        &'a self,
         id: u32,
         depth: usize,
         parent_id: Option<u32>,
-        rows: &mut Vec<crate::internal::models::CommentRow>,
-        total_fetched: &mut usize,
-    ) -> Result<()> {
-        if *total_fetched >= 100 {
-            return Ok(());
-        }
+        rows: &'a mut Vec<crate::internal::models::CommentRow>,
+        total_fetched: &'a mut usize,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            if *total_fetched >= 100 {
+                return Ok(());
+            }
 
-        // Fetch the comment (uses cache internally)
-        match self.fetch_comment_content(id) {
-            Ok(comment) => {
-                *total_fetched += 1;
-                let kids = comment.kids.clone();
+            // Fetch the comment (uses cache internally)
+            match self.fetch_comment_content(id).await {
+                Ok(comment) => {
+                    *total_fetched += 1;
+                    let kids = comment.kids.clone();
 
-                rows.push(crate::internal::models::CommentRow {
-                    comment,
-                    depth,
-                    expanded: true,
-                    parent_id,
-                });
+                    rows.push(crate::internal::models::CommentRow {
+                        comment,
+                        depth,
+                        expanded: true,
+                        parent_id,
+                    });
 
-                if let Some(kids) = kids {
-                    for kid_id in kids {
-                        self.fetch_comment_recursive(
-                            kid_id,
-                            depth + 1,
-                            Some(id),
-                            rows,
-                            total_fetched,
-                        )?;
+                    if let Some(kids) = kids {
+                        for kid_id in kids {
+                            self.fetch_comment_recursive(
+                                kid_id,
+                                depth + 1,
+                                Some(id),
+                                rows,
+                                total_fetched,
+                            )
+                            .await?;
+                        }
                     }
                 }
+                Err(_) => {
+                    // If a comment fails to load, just skip it and its children
+                }
             }
-            Err(_) => {
-                // If a comment fails to load, just skip it and its children
-            }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     #[tracing::instrument(skip(self), fields(url = %url))]
-    pub fn fetch_article_content(&self, url: &str) -> Result<Article> {
+    pub async fn fetch_article_content(&self, url: &str) -> Result<Article> {
         // Check cache first
         if let Some(article) = self.article_cache.get(&url.to_string()) {
             tracing::trace!("Cache hit for article {}", url);
@@ -321,9 +329,13 @@ impl ApiService {
             .get(url)
             .timeout(Duration::from_secs(10))
             .send()
+            .await
             .context("Failed to fetch article")?;
 
-        let html = response.text().context("Failed to get response text")?;
+        let html = response
+            .text()
+            .await
+            .context("Failed to get response text")?;
         let elements = parse_article_html(&html);
 
         // Simple title extraction heuristic (could be improved)
@@ -380,9 +392,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_fetch_story_ids_success() {
-        let mut server = mockito::Server::new();
+    #[tokio::test]
+    async fn test_fetch_story_ids_success() {
+        let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/topstories.json")
             .with_status(200)
@@ -391,27 +403,27 @@ mod tests {
             .create();
 
         let service = ApiService::with_base_url(format!("{}/", server.url()));
-        let result = service.fetch_story_ids(StoryListType::Top);
+        let result = service.fetch_story_ids(StoryListType::Top).await;
 
         mock.assert();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), vec![1, 2, 3, 4, 5]);
     }
 
-    #[test]
-    fn test_fetch_story_ids_network_error() {
+    #[tokio::test]
+    async fn test_fetch_story_ids_network_error() {
         // Use a URL that will fail to connect
         let service = ApiService::with_base_url("http://localhost:1/".to_string());
-        let result = service.fetch_story_ids(StoryListType::Top);
+        let result = service.fetch_story_ids(StoryListType::Top).await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("fetch_story_ids failed"));
     }
 
-    #[test]
-    fn test_fetch_story_content_success() {
-        let mut server = mockito::Server::new();
+    #[tokio::test]
+    async fn test_fetch_story_content_success() {
+        let mut server = mockito::Server::new_async().await;
         let story_json = r#"{
             "by": "testuser",
             "descendants": 10,
@@ -432,7 +444,7 @@ mod tests {
             .create();
 
         let service = ApiService::with_base_url(format!("{}/", server.url()));
-        let result = service.fetch_story_content(12345);
+        let result = service.fetch_story_content(12345).await;
 
         mock.assert();
         assert!(result.is_ok());
@@ -442,9 +454,9 @@ mod tests {
         assert_eq!(story.by, Some("testuser".to_string()));
     }
 
-    #[test]
-    fn test_fetch_story_content_invalid_json() {
-        let mut server = mockito::Server::new();
+    #[tokio::test]
+    async fn test_fetch_story_content_invalid_json() {
+        let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/item/12345.json")
             .with_status(200)
@@ -453,16 +465,16 @@ mod tests {
             .create();
 
         let service = ApiService::with_base_url(format!("{}/", server.url()));
-        let result = service.fetch_story_content(12345);
+        let result = service.fetch_story_content(12345).await;
 
         mock.assert();
         assert!(result.is_err());
         // Just verify we got an error - the exact error message may vary
     }
 
-    #[test]
-    fn test_fetch_comment_content_success() {
-        let mut server = mockito::Server::new();
+    #[tokio::test]
+    async fn test_fetch_comment_content_success() {
+        let mut server = mockito::Server::new_async().await;
         let comment_json = r#"{
             "by": "commenter",
             "id": 67890,
@@ -481,7 +493,7 @@ mod tests {
             .create();
 
         let service = ApiService::with_base_url(format!("{}/", server.url()));
-        let result = service.fetch_comment_content(67890);
+        let result = service.fetch_comment_content(67890).await;
 
         mock.assert();
         assert!(result.is_ok());
@@ -491,16 +503,16 @@ mod tests {
         assert_eq!(comment.text, Some("This is a comment".to_string()));
     }
 
-    #[test]
-    fn test_fetch_comment_content_http_error() {
-        let mut server = mockito::Server::new();
+    #[tokio::test]
+    async fn test_fetch_comment_content_http_error() {
+        let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/item/99999.json")
             .with_status(404)
             .create();
 
         let service = ApiService::with_base_url(format!("{}/", server.url()));
-        let result = service.fetch_comment_content(99999);
+        let result = service.fetch_comment_content(99999).await;
 
         mock.assert();
         // reqwest will succeed on 404 but JSON parsing should fail

@@ -1,8 +1,8 @@
 use tui_hn_app::api::{ApiService, StoryListType};
 
-#[test]
-fn test_integration_fetch_top_stories() {
-    let mut server = mockito::Server::new();
+#[tokio::test]
+async fn test_integration_fetch_top_stories() {
+    let mut server = mockito::Server::new_async().await;
     let _m = server
         .mock("GET", "/topstories.json")
         .with_status(200)
@@ -13,14 +13,15 @@ fn test_integration_fetch_top_stories() {
     let service = ApiService::with_base_url(format!("{}/", server.url()));
     let stories = service
         .fetch_story_ids(StoryListType::Top)
+        .await
         .expect("Failed to fetch stories");
 
     assert_eq!(stories, vec![1001, 1002, 1003]);
 }
 
-#[test]
-fn test_integration_fetch_story_details() {
-    let mut server = mockito::Server::new();
+#[tokio::test]
+async fn test_integration_fetch_story_details() {
+    let mut server = mockito::Server::new_async().await;
     let story_json = r#"{
         "id": 2001,
         "title": "Integration Test Story",
@@ -41,6 +42,7 @@ fn test_integration_fetch_story_details() {
     let service = ApiService::with_base_url(format!("{}/", server.url()));
     let story = service
         .fetch_story_content(2001)
+        .await
         .expect("Failed to fetch story");
 
     assert_eq!(story.id, 2001);

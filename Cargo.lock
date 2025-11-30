@@ -2089,9 +2089,7 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
- "futures-channel",
  "futures-core",
- "futures-util",
  "h2",
  "http",
  "http-body",
@@ -2980,7 +2978,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tui-hn-app"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "comrak",

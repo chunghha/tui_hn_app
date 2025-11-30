@@ -100,6 +100,10 @@ src/
   - Configurable logging system with module-specific levels
   - In-app log viewer (`L`) with syntax highlighting
   - Performance metrics instrumentation (conditionally enabled)
+- **Performance Improvements** (v0.7.2)
+  - Async API service for non-blocking network requests
+  - Improved UI responsiveness during data fetching
+  - Foundation for concurrent story loading
 
 ## Screenshots
 

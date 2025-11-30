@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-11-30
+
+### Changed
+- **Async API Migration**: Converted entire API service from blocking to async
+  - Changed from `reqwest::blocking::Client` to async `reqwest::Client`
+  - All API methods now async: `fetch_story_ids`, `fetch_story_content`, `fetch_comment_content`, `fetch_comment_tree`, `fetch_article_content`
+  - Updated retry mechanism to use `tokio::time::sleep` instead of `std::thread::sleep`
+  - Non-blocking API calls improve UI responsiveness
+  - Foundation for future concurrent fetching optimizations
+
+### Technical
+- Removed `blocking` feature from reqwest dependency
+- Fixed recursive async function with `Box::pin` and `Send` bound
+- Updated all App integration points to use `.await` on API calls
+- Converted all integration tests to `#[tokio::test]`
+- Converted all unit tests to async with `mockito::Server::new_async()`
+- Updated 7 API call sites in App with `.await`
+
+### Testing
+- ✅ All 77 tests passing (unit + integration + snapshot)
+- ✅ Build verified successfully
+
 ## [0.7.1] - 2025-11-29
 
 ### Added
