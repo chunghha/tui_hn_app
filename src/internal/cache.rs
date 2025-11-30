@@ -61,6 +61,13 @@ where
         None
     }
 
+    /// Get a value from the cache even if it has expired.
+    /// Useful for offline mode / fallback.
+    pub fn get_stale(&self, key: &K) -> Option<V> {
+        let entries = self.entries.read().ok()?;
+        entries.get(key).map(|entry| entry.value.clone())
+    }
+
     /// Set a value in the cache. Emits a tracing debug log with elapsed time when enabled.
     pub fn set(&self, key: K, value: V) {
         let start = Instant::now();

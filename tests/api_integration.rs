@@ -12,7 +12,7 @@ async fn test_integration_fetch_top_stories() {
 
     let service = ApiService::with_base_url(format!("{}/", server.url()));
     let stories = service
-        .fetch_story_ids(StoryListType::Top)
+        .fetch_story_ids(StoryListType::Top, None)
         .await
         .expect("Failed to fetch stories");
 

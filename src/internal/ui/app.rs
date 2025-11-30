@@ -318,6 +318,7 @@ pub struct App {
     pub action_tx: UnboundedSender<Action>,
     pub action_rx: UnboundedReceiver<Action>,
     pub bookmarks: crate::internal::bookmarks::Bookmarks,
+    pub cancellation_token: Option<tokio_util::sync::CancellationToken>,
     pub history: crate::internal::history::History,
     pub keybindings: crate::internal::ui::keybindings::KeyBindingMap,
     pub theme_editor: crate::internal::ui::theme_editor::ThemeEditor,
@@ -461,6 +462,7 @@ impl App {
             action_tx,
             action_rx,
             bookmarks,
+            cancellation_token: None,
             history,
             keybindings,
             theme_editor: crate::internal::ui::theme_editor::ThemeEditor::new(theme.clone()),
@@ -723,6 +725,17 @@ impl App {
             },
             None => (TuiTheme::default(), 0),
         }
+    }
+
+    pub fn cancel_previous_request(&mut self) {
+        if let Some(token) = self.cancellation_token.take() {
+            token.cancel();
+        }
+        self.cancellation_token = Some(tokio_util::sync::CancellationToken::new());
+    }
+
+    pub fn get_cancellation_token(&self) -> Option<tokio_util::sync::CancellationToken> {
+        self.cancellation_token.clone()
     }
 
     pub async fn run(&mut self, mut tui: crate::tui::Tui) -> Result<()> {
@@ -1256,6 +1269,7 @@ impl App {
                 }
             }
             Action::LoadStories(list_type) => {
+                self.cancel_previous_request();
                 self.loading = true;
                 self.current_list_type = list_type;
                 // Reset pagination
@@ -1265,23 +1279,33 @@ impl App {
 
                 let api = self.api_service.clone();
                 let tx = self.action_tx.clone();
+                let token = self.get_cancellation_token();
 
                 tokio::spawn(async move {
-                    match api.fetch_story_ids(list_type).await {
+                    match api.fetch_story_ids(list_type, token.clone()).await {
                         Ok(ids) => {
+                            tracing::info!("Fetched {} story IDs for {:?}", ids.len(), list_type);
                             // Send all IDs first
                             let all_ids = ids.clone();
                             let _ = tx.send(Action::StoryIdsLoaded(all_ids));
 
                             // Fetch first 20 stories concurrently (limit: 10)
                             let ids_to_fetch = ids.iter().take(20).copied().collect::<Vec<_>>();
-                            let results = api.fetch_stories_concurrent(&ids_to_fetch, 10).await;
+                            tracing::info!("Fetching {} stories concurrently", ids_to_fetch.len());
+                            let results =
+                                api.fetch_stories_concurrent(&ids_to_fetch, 10, token).await;
                             let stories: Vec<_> =
                                 results.into_iter().filter_map(|r| r.ok()).collect();
+                            tracing::info!("Successfully fetched {} stories", stories.len());
                             let _ = tx.send(Action::StoriesLoaded(stories));
                         }
-                        Err(_) => {
-                            let _ = tx.send(Action::Error("Failed to fetch stories".to_string()));
+                        Err(e) => {
+                            tracing::error!("Failed to fetch story IDs: {}", e);
+                            // Only report error if not cancelled
+                            if e.to_string() != "Request cancelled" {
+                                let _ = tx
+                                    .send(Action::Error(format!("Failed to fetch stories: {}", e)));
+                            }
                         }
                     }
                 });
@@ -1324,9 +1348,11 @@ impl App {
                         });
                     }
                     false => {
+                        self.cancel_previous_request();
                         self.loading = true;
                         let api = self.api_service.clone();
                         let tx = self.action_tx.clone();
+                        let token = self.get_cancellation_token();
                         let ids_to_fetch = self
                             .story_ids
                             .iter()
@@ -1336,7 +1362,8 @@ impl App {
                             .collect::<Vec<_>>();
 
                         tokio::spawn(async move {
-                            let results = api.fetch_stories_concurrent(&ids_to_fetch, 10).await;
+                            let results =
+                                api.fetch_stories_concurrent(&ids_to_fetch, 10, token).await;
                             let stories: Vec<_> =
                                 results.into_iter().filter_map(|r| r.ok()).collect();
                             let _ = tx.send(Action::StoriesLoaded(stories));
@@ -1369,10 +1396,12 @@ impl App {
                             });
                         }
                         false => {
+                            self.cancel_previous_request();
                             self.loading = true;
                             // TODO: Re-enable asynchronous loading for "Load All" feature
                             let api = self.api_service.clone();
                             let tx = self.action_tx.clone();
+                            let token = self.get_cancellation_token();
                             let start_idx = self.loaded_count;
 
                             // Load ALL remaining stories
@@ -1389,6 +1418,11 @@ impl App {
                                     tokio::spawn(async move {
                                         let mut stories = Vec::new();
                                         for (i, id) in ids_to_fetch.iter().enumerate() {
+                                            if let Some(token) = &token
+                                                && token.is_cancelled()
+                                            {
+                                                break;
+                                            }
                                             if let Ok(story) = api.fetch_story_content(*id).await {
                                                 stories.push(story);
                                             }
@@ -1408,18 +1442,14 @@ impl App {
                 }
             },
             Action::SelectStory(story, list_type) => {
-                // Propagate the category/list type when selecting a story so downstream
-                // operations (e.g., fetching details) have the context available.
-                self.current_list_type = list_type;
+                self.cancel_previous_request();
+                self.view_mode = ViewMode::StoryDetail;
                 self.selected_story = Some(story.clone());
-                // Show Article view first when a story is selected.
-                self.view_mode = ViewMode::Article;
-                self.comments_loading = true;
+                self.current_list_type = list_type;
                 self.comments.clear();
-                // Ensure comments view will start at the top for this story.
+                self.comment_ids.clear();
+                self.loaded_comments_count = 0;
                 self.comments_scroll = 0;
-
-                // Reset article-related state so that we always fetch for the newly selected story.
                 self.article_content = None;
                 self.article_for_story_id = None;
                 self.article_scroll = 0;
@@ -1427,6 +1457,7 @@ impl App {
 
                 let api = self.api_service.clone();
                 let tx = self.action_tx.clone();
+                let token = self.get_cancellation_token();
 
                 // If the story has a URL, start fetching the article immediately.
                 if let Some(url) = story.url.clone() {
@@ -1436,8 +1467,9 @@ impl App {
                     let story_id = story.id;
                     // Capture the list/category this selection came from for the response.
                     let list_for_request = self.current_list_type;
+                    let token_clone = token.clone();
                     tokio::spawn(async move {
-                        match api_clone.fetch_article_content(&url).await {
+                        match api_clone.fetch_article_content(&url, token_clone).await {
                             Ok(content) => {
                                 let _ = tx_clone.send(Action::ArticleLoaded(
                                     list_for_request,
@@ -1445,9 +1477,13 @@ impl App {
                                     content,
                                 ));
                             }
-                            Err(_) => {
-                                let _ = tx_clone
-                                    .send(Action::Error("Failed to fetch article".to_string()));
+                            Err(e) => {
+                                if e.to_string() != "Request cancelled" {
+                                    let _ = tx_clone.send(Action::Error(format!(
+                                        "Failed to fetch article: {}",
+                                        e
+                                    )));
+                                }
                             }
                         }
                     });
@@ -1465,7 +1501,9 @@ impl App {
                         let tx_clone = tx.clone();
                         tokio::spawn(async move {
                             // Use fetch_comment_tree to get threaded comments
-                            if let Ok(comment_rows) = api_clone.fetch_comment_tree(kids).await {
+                            if let Ok(comment_rows) =
+                                api_clone.fetch_comment_tree(kids, token).await
+                            {
                                 let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
                             }
                         });
@@ -1517,17 +1555,21 @@ impl App {
                             let url = url.clone();
                             let list_type = self.current_list_type;
                             let story_id = story.id;
+                            let token = self.get_cancellation_token();
                             tokio::spawn(async move {
-                                match api.fetch_article_content(&url).await {
+                                match api.fetch_article_content(&url, token).await {
                                     Ok(content) => {
                                         let _ = tx.send(Action::ArticleLoaded(
                                             list_type, story_id, content,
                                         ));
                                     }
-                                    Err(_) => {
-                                        let _ = tx.send(Action::Error(
-                                            "Failed to fetch article".to_string(),
-                                        ));
+                                    Err(e) => {
+                                        if e.to_string() != "Request cancelled" {
+                                            let _ = tx.send(Action::Error(format!(
+                                                "Failed to fetch article: {}",
+                                                e
+                                            )));
+                                        }
                                     }
                                 }
                             });

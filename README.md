@@ -113,6 +113,11 @@ src/
   - Configurable accessibility options (`high_contrast_mode`, `verbose_status`)
   - Pure black/white color scheme for maximum visibility
   - WCAG AA compliant standard themes
+- **Robustness & Architecture** (v0.9.0)
+  - Request deduplication: Multiple concurrent requests for the same resource now share a single network call
+  - Request cancellation: Stale requests are cancelled when switching views
+  - Offline mode: Graceful fallback to stale cache when network fails
+  - Config resilience: Malformed config files don't crash the app
 
 ## Accessibility
 

@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-11-30
+
+### Added
+- **Request Deduplication**: Prevents duplicate API calls for the same resource
+  - Uses `DashMap` and `Shared` futures to track in-flight requests
+  - Multiple concurrent requests for the same URL now share a single network call
+  - Verified with `test_request_deduplication`
+- **Request Cancellation**: Implements cancellation tokens for stale requests
+  - Added `CancellationToken` support to `ApiService` methods (`fetch_story_ids`, `fetch_stories_concurrent`, `fetch_comment_tree`, `fetch_article_content`)
+  - Integrated cancellation into `App`'s action handlers (`LoadStories`, `LoadMoreStories`, `LoadAllStories`, `SelectStory`)
+  - Stale requests are cancelled when switching views or initiating new loads
+  - Verified with `test_request_cancellation`
+- **Offline Mode**: Graceful degradation when network fails
+  - Added `get_stale()` method to `Cache` for retrieving expired entries
+  - All fetch methods (`fetch_story_content`, `fetch_comment_content`, `fetch_article_content`) now fall back to stale cache on network errors
+  - Users can browse previously-loaded content even when offline
+  - Verified with `test_stale_cache_fallback`
+- **Config Resilience**: Robust error handling for configuration files
+  - `AppConfig::load()` handles parse errors gracefully with sensible defaults
+  - Malformed config files are logged but don't crash the app
+
+### Changed
+- `ApiService` methods now accept `Option<CancellationToken>` for request cancellation
+- `fetch_story_ids`, `fetch_stories_concurrent`, `fetch_comment_tree`, and `fetch_article_content` support cancellation
+- Network errors now trigger stale cache fallback with warning logs
+
+### Dependencies
+- Added `dashmap = "6.1.0"` for concurrent in-flight request tracking
+- Added `tokio-util = { version = "0.7.17", features = ["io", "codec", "compat", "time", "rt", "full"] }` for `CancellationToken`
+
+### Technical
+- All 76 tests passing
+- New tests: `test_request_deduplication`, `test_request_cancellation`, `test_stale_cache_fallback`
+
 ## [0.8.1] - 2025-11-30
 
 ### Added

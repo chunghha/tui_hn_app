@@ -107,24 +107,9 @@
   - Export custom themes to JSON
   - Interactive UI overlay (deferred to v0.6.3)
 
-- [ ] **Theme Save Location**: Configurable theme storage (Pre-1.0)
-  - Allow custom directory via config.ron
-  - Support for user config directory (e.g., `~/.config/tui-hn-app/themes/`)
-  - Fallback to default if custom location is not writable
-  - Auto-create directory if it doesn't exist
-  - Currently hardcoded to `./themes/`
 
-- [ ] **Graceful Degradation**: Enhanced error resilience (Pre-1.0, deferred from v0.7.0)
-  - Story loading fallback → Show cached stories when network fails
-  - Comment loading fallback → Show placeholder for failed comments
-  - Article fetching fallback → Keep story view functional on fetch errors
-  - Configuration errors → Use sensible defaults
-  - File I/O errors → Graceful handling with user notifications
 
-## 📝 Known Issues
-- [ ] Article scroll position doesn't always persist when toggling views
-- [ ] Long titles may wrap awkwardly in list view
-- [ ] Theme switching doesn't refresh immediately in all cases
+
 
 ## 🎯 Next Recommended Tasks
 
@@ -249,11 +234,8 @@ Based on current codebase maturity, I recommend prioritizing:
   - ✅ Integration tests for UI flows (API integration with mockito)
   - ✅ Mock API responses for reliable testing
   - ✅ Snapshot tests for rendering (insta)
-  - [ ] Property-based tests for edge cases (Deferred)
 - [x] **CI/CD Improvements**
   - ✅ Automated testing on multiple platforms (GitHub Actions)
-  - [ ] Release automation (Deferred)
-  - [ ] Benchmark tracking (Deferred)
 
 #### v0.7.2 - Performance Optimization (In Progress - 2025-11-30)
 - [x] **Async Migration (Phase 1)**: Convert API service to async
@@ -267,10 +249,7 @@ Based on current codebase maturity, I recommend prioritizing:
   - Better cancellation of in-flight requests when switching views
   - Rate limiting to respect HN API best practices
   - Request deduplication
-- [ ] **Rendering Performance** (Deferred)
-  - Optimize list rendering for large story counts
-  - Lazy loading for comment trees
-  - Diff-based rendering where applicable
+
 
 #### v0.7.3 - Concurrent Fetching & Rate Limiting (Completed - 2025-11-30)
 - [x] **Rate Limiting**: Semaphore-based rate limiting
@@ -282,9 +261,7 @@ Based on current codebase maturity, I recommend prioritizing:
   - ✅ 10 concurrent requests (configurable via `concurrent_requests`)
   - ✅ 3-5x faster story loading
   - ✅ Updated App to use concurrent fetching
-- [ ] **Request Management** (Deferred)
-  - Request deduplication
-  - Request cancellation tokens
+
 
 
 #### v0.8.0 - Accessibility Phase 1 (Completed - 2025-11-30)
@@ -312,6 +289,47 @@ Based on current codebase maturity, I recommend prioritizing:
 - [x] **UI Polish**
   - ✅ Theme Editor padding improvements
 
+
+---
+
+### 🧹 v0.9.x - Pre-1.0 Polish Series
+
+#### v0.9.0 - Robustness & Architecture (Completed - 2025-11-30)
+- [x] **Request Management** (Completed - 2025-11-30)
+  - ✅ Request deduplication (prevent duplicate API calls)
+  - ✅ Request cancellation tokens (cancel stale requests on view switch)
+- [x] **Graceful Degradation** (Completed - 2025-11-30)
+  - ✅ Offline mode / Cache fallback when network fails
+  - ✅ Stale cache served when fetch fails (stories, comments, articles)
+  - ✅ Config resilience (handles parse errors with defaults)
+
+#### v0.9.1 - Performance & Rendering (Planned)
+- [ ] **Rendering Performance** (Deferred from v0.7.2)
+  - Optimize list rendering for large story counts (view recycling)
+  - Lazy loading for deep comment trees
+  - Diff-based rendering optimizations
+- [ ] **Bug Fixes & UI Polish**
+  - Fix article scroll position persistence
+  - Fix long title wrapping in list view
+  - Fix theme switching refresh issues
+
+#### v0.9.2 - Configuration & Storage (Planned)
+- [ ] **Theme Save Location**
+  - Configurable theme directory (e.g., `~/.config/tui-hn-app/themes/`)
+  - Auto-create directory if missing
+- [ ] **Keybinding Conflict Detection**
+  - Warn user if custom bindings conflict
+
+#### v0.9.3 - Release Prep & Quality (Planned)
+- [ ] **Advanced Testing**
+  - Property-based tests for edge cases
+  - Performance benchmarks (criterion)
+- [ ] **CI/CD & Automation**
+  - Release automation workflow
+  - Benchmark tracking
+- [ ] **Final Documentation**
+  - User Guide complete
+  - Developer Docs complete
 
 ---
 
