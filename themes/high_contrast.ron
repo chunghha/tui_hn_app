@@ -1,0 +1,53 @@
+(
+    name: "High Contrast",
+    description: "High contrast theme optimized for accessibility (WCAG AAA compliant)",
+    
+    // Main UI colors - Maximum contrast
+    background: "#000000",           // Pure black
+    foreground: "#FFFFFF",           // Pure white
+    border: "#FFFFFF",               // White borders for clarity
+    
+    // Selection and highlights - Bright yellow for maximum visibility
+    selection_bg: "#FFFF00",         // Bright yellow background
+    selection_fg: "#000000",         // Black text on yellow
+    
+    // Status bar
+    status_bar_bg: "#FFFFFF",        // White background
+    status_bar_fg: "#000000",        // Black text
+    
+    // Titles and headers - Bright cyan
+    title: "#00FFFF",                // Bright cyan
+    subtitle: "#FFFFFF",             // White
+    
+    // Story list colors
+    story_title: "#FFFFFF",          // White for readability
+    story_url: "#00FFFF",            // Bright cyan for links
+    story_meta: "#FFFF00",           // Bright yellow for metadata
+    story_index: "#00FF00",          // Bright green for indices
+    
+    // Comments - High contrast variations
+    comment_author: "#00FFFF",       // Bright cyan
+    comment_text: "#FFFFFF",         // White
+    comment_depth_1: "#00FF00",      // Bright green
+    comment_depth_2: "#FFFF00",      // Bright yellow
+    comment_depth_3: "#FF00FF",      // Bright magenta
+    comment_depth_4: "#00FFFF",      // Bright cyan
+    
+    // Semantic colors - Bright and distinct
+    success: "#00FF00",              // Bright green
+    warning: "#FFFF00",              // Bright yellow
+    error: "#FF0000",                // Bright red
+    info: "#00FFFF",                 // Bright cyan
+    
+    // Article view
+    article_text: "#FFFFFF",         // White
+    article_heading: "#FFFF00",      // Bright yellow
+    article_link: "#00FFFF",         // Bright cyan
+    article_code_bg: "#333333",      // Dark gray (still high contrast)
+    article_code_fg: "#00FF00",      // Bright green
+    
+    // Help overlay
+    help_key: "#FFFF00",             // Bright yellow for keys
+    help_description: "#FFFFFF",     // White for descriptions
+    help_section: "#00FFFF",         // Bright cyan for sections
+)

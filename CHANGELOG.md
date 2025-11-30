@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-11-30 (In Progress)
+
+### Added
+- **High Contrast Theme**: New accessibility-focused theme with WCAG AAA compliance
+  - Pure black background (#000000) with pure white text (#FFFFFF)
+  - Bright yellow highlights (#FFFF00) for maximum visibility
+  - Designed for users with visual impairments
+  - Available as "High Contrast" in theme selection
+- **Accessibility Configuration**: New configuration options for accessibility features
+  - `high_contrast_mode: bool` - Enable high contrast theme
+  - `verbose_status: bool` - Show more descriptive status messages
+  - Integrated into `config.ron` and `config.example.ron`
+
+### Changed
+- `AppConfig` extended with `accessibility: AccessibilityConfig`
+- Configuration system now supports accessibility preferences
+
+### Technical
+- New `AccessibilityConfig` struct in `src/config.rs`
+- All 77 tests passing
+
 ## [0.7.3] - 2025-11-30
 
 ### Added

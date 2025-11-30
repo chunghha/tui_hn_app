@@ -82,6 +82,15 @@ impl Default for ListViewConfig {
 }
 
 /// Network retry configuration
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(default)]
+pub struct AccessibilityConfig {
+    /// Enable high contrast mode (uses high contrast theme colors)
+    pub high_contrast_mode: bool,
+    /// Show more verbose status descriptions for screen readers
+    pub verbose_status: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct NetworkConfig {
@@ -188,6 +197,9 @@ pub struct AppConfig {
     /// Logging configuration
     #[serde(default)]
     pub logging: LogConfig,
+    /// Accessibility configuration
+    #[serde(default)]
+    pub accessibility: AccessibilityConfig,
 }
 
 fn default_theme_name() -> String {
@@ -225,6 +237,7 @@ impl Default for AppConfig {
             ui: UIConfig::default(),
             network: NetworkConfig::default(),
             logging: LogConfig::default(),
+            accessibility: AccessibilityConfig::default(),
         }
     }
 }

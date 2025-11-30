@@ -119,4 +119,16 @@
     //     // Respects Hacker News API guidelines (recommended: 3.0)
     //     rate_limit_per_second: 3.0,
     // ),
+
+    // Accessibility Configuration (v0.8.0+)
+    // Configure accessibility features for better usability
+    // accessibility: (
+    //     // Enable high contrast mode (default: false)
+    //     // When enabled, use "High Contrast" theme for maximum visibility
+    //     high_contrast_mode: false,
+    //     
+    //     // Show more verbose status descriptions (default: false)
+    //     // Helpful for screen readers and detailed status information
+    //     verbose_status: false,
+    // ),
 )

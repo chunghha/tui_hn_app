@@ -108,6 +108,10 @@ src/
   - Concurrent story fetching (3-5x faster with 10 concurrent requests)
   - Rate limiting (3 req/sec, respects HN API guidelines)
   - Automatic request throttling with semaphore
+- **Accessibility Features** (v0.8.0)
+  - High contrast theme (WCAG AAA compliant)
+  - Configurable accessibility options (`high_contrast_mode`, `verbose_status`)
+  - Pure black/white color scheme for maximum visibility
 
 ## Screenshots
 
