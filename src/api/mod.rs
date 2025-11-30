@@ -57,8 +57,8 @@ pub struct ApiService {
     article_cache: Cache<String, Article>,
     network_config: crate::config::NetworkConfig,
     enable_performance_metrics: bool,
-    #[cfg(test)]
-    base_url: Option<String>,
+    // Exposed for integration tests
+    pub base_url: Option<String>,
 }
 
 impl ApiService {
@@ -80,12 +80,12 @@ impl ApiService {
             ), // 15 minutes
             network_config,
             enable_performance_metrics,
-            #[cfg(test)]
             base_url: None,
         }
     }
 
-    #[cfg(test)]
+    /// Helper to create a service with a custom base URL (for testing).
+    #[allow(dead_code)]
     pub fn with_base_url(base_url: String) -> Self {
         Self {
             client: Client::new(),
@@ -98,14 +98,8 @@ impl ApiService {
         }
     }
 
-    #[cfg(test)]
     fn get_base_url(&self) -> &str {
         self.base_url.as_deref().unwrap_or(HN_API_BASE_URL)
-    }
-
-    #[cfg(not(test))]
-    fn get_base_url(&self) -> &str {
-        HN_API_BASE_URL
     }
 
     /// Generic helper to GET a URL and deserialize the JSON body into `T`.

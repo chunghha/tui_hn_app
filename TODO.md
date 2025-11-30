@@ -244,16 +244,16 @@ Based on current codebase maturity, I recommend prioritizing:
   - Cache operation timing
   - Conditional debug-only rendering metrics
 
-#### v0.7.1 - Testing & Quality (Planned)
-- [ ] **Expanded Test Coverage**
-  - Integration tests for UI flows
-  - Mock API responses for reliable testing
-  - Snapshot tests for rendering
-  - Property-based tests for edge cases
-- [ ] **CI/CD Improvements**
-  - Automated testing on multiple platforms
-  - Release automation
-  - Benchmark tracking
+#### v0.7.1 - Testing & Quality (Completed - 2025-11-29)
+- [x] **Expanded Test Coverage**
+  - ✅ Integration tests for UI flows (API integration with mockito)
+  - ✅ Mock API responses for reliable testing
+  - ✅ Snapshot tests for rendering (insta)
+  - [ ] Property-based tests for edge cases (Deferred)
+- [x] **CI/CD Improvements**
+  - ✅ Automated testing on multiple platforms (GitHub Actions)
+  - [ ] Release automation (Deferred)
+  - [ ] Benchmark tracking (Deferred)
 
 #### v0.7.2 - Performance Optimization (Planned)
 - [ ] **Async Optimization**: Improve async handling

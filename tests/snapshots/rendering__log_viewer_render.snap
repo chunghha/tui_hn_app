@@ -1,0 +1,42 @@
+---
+source: tests/rendering.rs
+expression: buffer
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 24 },
+    content: [
+        "                                                                                ",
+        "                                                                                ",
+        "    ┌Log Viewer (Tab: Switch, Esc: Close)──────────────────────────────────┐    ",
+        "    │  Logs  |  Metrics                                                    │    ",
+        "    ────────────────────────────────────────────────────────────────────────    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    │                                                                      │    ",
+        "    └──────────────────────────────────────────────────────────────────────┘    ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 3, fg: Yellow, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 11, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 16, y: 3, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 23, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 4, y: 4, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 76, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

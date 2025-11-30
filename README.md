@@ -320,9 +320,12 @@ The app implements an in-memory cache with TTL (Time To Live) to reduce API call
 The cache is thread-safe and transparent to users — no configuration required.
 
 ## Testing
+ 
+- **Unit Tests**: Run with `cargo test`. Covers API helpers and utilities.
+- **Integration Tests**: Run with `cargo test --test api_integration`. Uses `mockito` to verify API interactions without real network calls.
+- **Snapshot Tests**: Run with `cargo test --test rendering`. Uses `insta` to verify UI rendering.
+  - To update snapshots after a UI change: `INSTA_UPDATE=always cargo test --test rendering`
 
-- Unit tests exist for API helpers and utilities (run with `cargo test`).
-- Tests are written to avoid network dependency where possible (mockito is used for `ApiService` tests).
 
 ## Contributing
 

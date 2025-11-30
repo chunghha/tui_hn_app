@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2025-11-29
+
+### Added
+- **Integration Tests**: API integration testing with `mockito`
+  - Mock API server setup for reliable testing without network calls
+  - Tests for story list fetching (Top/New/etc.)
+  - Tests for story details and comment fetching
+  - `tests/api_integration.rs` with 2+ integration tests
+- **Snapshot Tests**: UI rendering verification with `insta`
+  - Snapshot testing for Log Viewer rendering
+  - `tests/rendering.rs` with visual regression detection
+  - Snapshots stored in `tests/snapshots/` directory
+- **CI/CD Pipeline**: GitHub Actions workflow for automated testing
+  - `.github/workflows/ci.yml` with multi-platform support
+  - Automated formatting checks (`cargo fmt --check`)
+  - Automated linting (`cargo clippy`)
+  - Automated test execution (`cargo test`)
+  - Dependency caching for faster builds
+
+### Changed
+- `ApiService::base_url` now exposed (not restricted to `#[cfg(test)]`) for integration testing
+- `ApiService::with_base_url()` helper method now public for test usage
+
+### Technical
+- Added dev-dependencies: `mockito` (1.7.0), `insta` (1.44.3)
+- Total test coverage: 75+ tests (unit + integration + snapshot)
+- CI pipeline runs on Linux (Ubuntu) with full test suite
+
 ## [0.7.0] - 2025-11-29
 
 ### Added
