@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] - 2025-11-30 (In Progress)
+## [0.8.1] - 2025-11-30
+
+### Added
+- **Verbose Status Mode**: New accessibility feature providing descriptive, full-sentence status messages for screen readers (enable via `accessibility.verbose_status`).
+- **Accessibility Documentation**: Comprehensive guide at `docs/ACCESSIBILITY.md`.
+- **Theme Editor Padding**: Improved visual layout of the Theme Editor property list.
+
+### Changed
+- **Theme Updates**: Adjusted `Flexoki Light` theme colors (Blue and Yellow) to meet WCAG AA contrast standards.
+- **Status Bar**: Now supports context-aware verbose messaging.
+
+### Fixed
+- **Contrast Issues**: Resolved low contrast ratios in standard themes.
+
+## [0.8.0] - 2025-11-30
 
 ### Added
 - **High Contrast Theme**: New accessibility-focused theme with WCAG AAA compliance

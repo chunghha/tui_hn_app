@@ -287,26 +287,30 @@ Based on current codebase maturity, I recommend prioritizing:
   - Request cancellation tokens
 
 
-#### v0.8.0 - Accessibility (In Progress - 2025-11-30)
-- [/] **High Contrast Theme**
+#### v0.8.0 - Accessibility Phase 1 (Completed - 2025-11-30)
+- [x] **High Contrast Theme**
   - ✅ Created high contrast theme with WCAG AAA compliant colors
   - ✅ Pure black/white with bright highlights for maximum visibility
-- [/] **Accessibility Configuration**
+- [x] **Accessibility Configuration**
   - ✅ Added `AccessibilityConfig` with `high_contrast_mode` and `verbose_status`
   - ✅ Integrated into app configuration system
   - ✅ Documented in `config.example.ron`
-- [ ] **WCAG Compliance** (Planned)
-  - Audit existing themes for WCAG AA compliance
-  - Test contrast ratios
-  - Fix low-contrast combinations
-- [ ] **Enhanced Status Messages** (Planned)
-  - More descriptive loading states
-  - Context-rich error messages
-  - Better navigation announcements
-- [ ] **Documentation** (Planned)
-  - Accessibility guide in README
-  - Keyboard shortcuts reference
-  - Testing guidelines
+
+#### v0.8.1 - Accessibility Phase 2 (Completed - 2025-11-30)
+- [x] **WCAG Compliance**
+  - ✅ Audit existing themes for WCAG AA compliance
+  - ✅ Test contrast ratios (Fixed Flexoki Light blue/yellow)
+  - ✅ Fix low-contrast combinations
+- [x] **Enhanced Status Messages**
+  - ✅ More descriptive loading states
+  - ✅ Context-rich error messages
+  - ✅ Better navigation announcements (Verbose Status mode)
+- [x] **Documentation**
+  - ✅ Accessibility guide in README
+  - ✅ Keyboard shortcuts reference
+  - ✅ Testing guidelines (`docs/ACCESSIBILITY.md`)
+- [x] **UI Polish**
+  - ✅ Theme Editor padding improvements
 
 
 ---

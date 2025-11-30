@@ -108,10 +108,21 @@ src/
   - Concurrent story fetching (3-5x faster with 10 concurrent requests)
   - Rate limiting (3 req/sec, respects HN API guidelines)
   - Automatic request throttling with semaphore
-- **Accessibility Features** (v0.8.0)
+- **Accessibility Features** (v0.8.0/v0.8.1)
   - High contrast theme (WCAG AAA compliant)
   - Configurable accessibility options (`high_contrast_mode`, `verbose_status`)
   - Pure black/white color scheme for maximum visibility
+  - WCAG AA compliant standard themes
+
+## Accessibility
+
+We are committed to making this app accessible to everyone.
+- **High Contrast Theme**: WCAG AAA compliant colors.
+- **Screen Reader Support**: Verbose status messages (configurable).
+- **Keyboard Navigation**: Full keyboard control.
+- **Documentation**: Dedicated guide for accessibility features.
+
+See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for a detailed guide.
 
 ## Screenshots
 

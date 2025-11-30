@@ -911,19 +911,63 @@ fn parse_status_bar_format(app: &App, format: &str) -> String {
     result
 }
 
+fn get_verbose_status(app: &App) -> String {
+    if app.loading || app.comments_loading || app.article_loading {
+        let desc = app
+            .loading_description()
+            .unwrap_or_else(|| "content".to_string());
+        return format!("Loading {}. Please wait.", desc);
+    }
+
+    match &app.view_mode {
+        ViewMode::List => {
+            let list_type = app.current_list_type.to_string();
+            format!(
+                "Viewing {} Stories. {} stories loaded. Press Question Mark for help.",
+                list_type, app.loaded_count
+            )
+        }
+        ViewMode::StoryDetail => {
+            if let Some(story) = app.selected_story.as_ref() {
+                format!(
+                    "Viewing Story: {}. By {}. {} comments. Press Tab to view article.",
+                    story.title.as_deref().unwrap_or("Unknown Title"),
+                    story.by.as_deref().unwrap_or("Unknown Author"),
+                    story.descendants.unwrap_or(0)
+                )
+            } else {
+                "Viewing Story Detail. No story selected.".to_string()
+            }
+        }
+        ViewMode::Article => {
+            if let Some(story) = app.selected_story.as_ref() {
+                format!(
+                    "Reading Article: {}. Press Escape to return to story details.",
+                    story.title.as_deref().unwrap_or("Unknown Title")
+                )
+            } else {
+                "Reading Article. No article loaded.".to_string()
+            }
+        }
+        _ => "Viewing Content.".to_string(),
+    }
+}
+
 fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
     // Check if custom format is configured
     let status = match (
+        app.config.accessibility.verbose_status,
         app.config.ui.status_bar_format.is_empty(),
         app.loading || app.comments_loading || app.article_loading,
         &app.input_mode,
         &app.view_mode,
     ) {
-        (false, _, _, _) => {
+        (true, _, _, _, _) => get_verbose_status(app),
+        (false, false, _, _, _) => {
             // Use custom format with token parsing
             parse_status_bar_format(app, &app.config.ui.status_bar_format)
         }
-        (true, true, _, &ViewMode::List) if !app.story_ids.is_empty() => {
+        (false, true, true, _, &ViewMode::List) if !app.story_ids.is_empty() => {
             // Show animated spinner with loading description and story counts
             let spinner = app.get_spinner_char();
             let desc = app
@@ -937,7 +981,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 app.story_ids.len()
             )
         }
-        (true, true, _, _) => {
+        (false, true, true, _, _) => {
             // Show animated spinner with loading description
             let spinner = app.get_spinner_char();
             let desc = app
@@ -945,11 +989,11 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 .unwrap_or_else(|| "Loading...".to_string());
             format!("{} {}", spinner, desc)
         }
-        (true, false, &InputMode::Search, _) => {
+        (false, true, false, &InputMode::Search, _) => {
             // Enhanced status bar for search mode with shortcuts
             "Search: Type | ↑↓: History | Ctrl+M/F2: Mode | Ctrl+R/F3: Regex | Enter: OK | Esc: Cancel".to_string()
         }
-        (true, false, _, &ViewMode::List) => {
+        (false, true, false, _, &ViewMode::List) => {
             let loaded_info = match app.story_ids.len() {
                 0 => String::new(),
                 len => format!(" | {}/{}", app.loaded_count, len),
@@ -968,15 +1012,15 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 loaded_info, filter_hint, clear_hint
             )
         }
-        (true, false, _, &ViewMode::StoryDetail) => {
+        (false, true, false, _, &ViewMode::StoryDetail) => {
             "Esc/q: Back | o: Browser | b: Bookmark | n: More Comments | Tab: Article | t: Theme | ?: Help"
                 .to_string()
         }
-        (true, false, _, &ViewMode::Article) => {
+        (false, true, false, _, &ViewMode::Article) => {
             "Esc/q: Back | o: Browser | Tab: Comments | j/k: Scroll | t: Theme | ?: Help"
                 .to_string()
         }
-        (true, false, _, &ViewMode::Bookmarks) => {
+        (false, true, false, _, &ViewMode::Bookmarks) => {
             // Show a compact status for bookmarks view, including count
             let count = app.bookmarks.stories.len();
             let bookmark_info = match count {
@@ -988,7 +1032,7 @@ fn render_status_bar(app: &App, f: &mut Frame, area: Rect) {
                 bookmark_info
             )
         }
-        (true, false, _, &ViewMode::History) => {
+        (false, true, false, _, &ViewMode::History) => {
             let count = app.history.stories.len();
             let history_info = match count {
                 0 => "No history".to_string(),
@@ -1430,7 +1474,7 @@ fn render_theme_editor_overlay(app: &App, f: &mut Frame) {
                     .add_modifier(Modifier::BOLD),
                 false => Style::default().fg(app.theme.foreground),
             };
-            ListItem::new(p.name()).style(style)
+            ListItem::new(format!(" {}", p.name())).style(style)
         })
         .collect();
 
