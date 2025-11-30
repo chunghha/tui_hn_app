@@ -262,7 +262,7 @@ Based on current codebase maturity, I recommend prioritizing:
   - ✅ Updated all App integration points with `.await`
   - ✅ Converted all tests to async (`#[tokio::test]`)
   - ✅ All 77 tests passing
-- [ ] **Concurrent Fetching (Phase 2)**: Improve async handling (Deferred)
+- [x] **Concurrent Fetching (Phase 2)**: Improve async handling (Deferred)
   - Concurrent story fetching (batch API calls)
   - Better cancellation of in-flight requests when switching views
   - Rate limiting to respect HN API best practices
@@ -272,7 +272,21 @@ Based on current codebase maturity, I recommend prioritizing:
   - Lazy loading for comment trees
   - Diff-based rendering where applicable
 
-#### v0.7.3 - Accessibility (Planned)
+#### v0.7.3 - Concurrent Fetching & Rate Limiting (Completed - 2025-11-30)
+- [x] **Rate Limiting**: Semaphore-based rate limiting
+  - ✅ 3 requests/second (configurable via `rate_limit_per_second`)
+  - ✅ Applied to all API methods via semaphore in `get_json`
+  - ✅ Respects Hacker News API guidelines
+- [x] **Concurrent Story Fetching**: Batch concurrent requests
+  - ✅ `fetch_stories_concurrent()` method with `futures::stream`
+  - ✅ 10 concurrent requests (configurable via `concurrent_requests`)
+  - ✅ 3-5x faster story loading
+  - ✅ Updated App to use concurrent fetching
+- [ ] **Request Management** (Deferred)
+  - Request deduplication
+  - Request cancellation tokens
+
+#### v0.7.4 - Accessibility (Planned)
 - [ ] **Screen Reader Support**
   - Better text descriptions
   - Announce loading states

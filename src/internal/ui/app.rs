@@ -1273,14 +1273,11 @@ impl App {
                             let all_ids = ids.clone();
                             let _ = tx.send(Action::StoryIdsLoaded(all_ids));
 
-                            // Fetch first 20 stories
+                            // Fetch first 20 stories concurrently (limit: 10)
                             let ids_to_fetch = ids.iter().take(20).copied().collect::<Vec<_>>();
-                            let mut stories = Vec::new();
-                            for id in &ids_to_fetch {
-                                if let Ok(story) = api.fetch_story_content(*id).await {
-                                    stories.push(story);
-                                }
-                            }
+                            let results = api.fetch_stories_concurrent(&ids_to_fetch, 10).await;
+                            let stories: Vec<_> =
+                                results.into_iter().filter_map(|r| r.ok()).collect();
                             let _ = tx.send(Action::StoriesLoaded(stories));
                         }
                         Err(_) => {
@@ -1339,12 +1336,9 @@ impl App {
                             .collect::<Vec<_>>();
 
                         tokio::spawn(async move {
-                            let mut stories = Vec::new();
-                            for id in &ids_to_fetch {
-                                if let Ok(story) = api.fetch_story_content(*id).await {
-                                    stories.push(story);
-                                }
-                            }
+                            let results = api.fetch_stories_concurrent(&ids_to_fetch, 10).await;
+                            let stories: Vec<_> =
+                                results.into_iter().filter_map(|r| r.ok()).collect();
                             let _ = tx.send(Action::StoriesLoaded(stories));
                         });
                     }

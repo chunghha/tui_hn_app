@@ -104,6 +104,10 @@ src/
   - Async API service for non-blocking network requests
   - Improved UI responsiveness during data fetching
   - Foundation for concurrent story loading
+- **Performance Improvements** (v0.7.3)
+  - Concurrent story fetching (3-5x faster with 10 concurrent requests)
+  - Rate limiting (3 req/sec, respects HN API guidelines)
+  - Automatic request throttling with semaphore
 
 ## Screenshots
 

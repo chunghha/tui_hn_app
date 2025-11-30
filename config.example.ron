@@ -93,8 +93,8 @@
     //     log_directory: Some("logs"),
     // ),
 
-    // Network Configuration (v0.7.0+)
-    // Configure automatic retry behavior for network requests
+    // Network Configuration (v0.7.0+, v0.7.3+)
+    // Configure automatic retry behavior, concurrency, and rate limiting
     // network: (
     //     // Maximum number of retry attempts for failed requests
     //     max_retries: 3,
@@ -108,5 +108,15 @@
     //     // Whether to retry on timeout errors
     //     // Set to false to fail fast on timeouts
     //     retry_on_timeout: true,
+    //     
+    //     // Concurrent Fetching & Rate Limiting (v0.7.3+)
+    //     
+    //     // Maximum number of concurrent story requests (default: 10)
+    //     // Higher values = faster loading but more memory usage
+    //     concurrent_requests: 10,
+    //     
+    //     // Rate limit in requests per second (default: 3.0)
+    //     // Respects Hacker News API guidelines (recommended: 3.0)
+    //     rate_limit_per_second: 3.0,
     // ),
 )

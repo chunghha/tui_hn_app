@@ -93,6 +93,12 @@ pub struct NetworkConfig {
     pub max_retry_delay_ms: u64,
     /// Whether to retry on timeout errors
     pub retry_on_timeout: bool,
+    /// Maximum number of concurrent requests
+    #[serde(default = "default_concurrent_requests")]
+    pub concurrent_requests: usize,
+    /// Rate limit in requests per second
+    #[serde(default = "default_rate_limit_per_second")]
+    pub rate_limit_per_second: f64,
 }
 
 impl Default for NetworkConfig {
@@ -102,6 +108,8 @@ impl Default for NetworkConfig {
             initial_retry_delay_ms: 500,
             max_retry_delay_ms: 5000,
             retry_on_timeout: true,
+            concurrent_requests: default_concurrent_requests(),
+            rate_limit_per_second: default_rate_limit_per_second(),
         }
     }
 }
@@ -196,6 +204,14 @@ fn default_auto_switch_dark_to_light() -> bool {
 
 fn default_ghost_term_name() -> String {
     "xterm-ghostty".to_string()
+}
+
+fn default_concurrent_requests() -> usize {
+    10
+}
+
+fn default_rate_limit_per_second() -> f64 {
+    3.0
 }
 
 impl Default for AppConfig {

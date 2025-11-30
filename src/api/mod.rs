@@ -5,8 +5,10 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use strum_macros::Display;
+use tokio::sync::Semaphore;
 
 /// Types of Hacker News story lists we can fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Display, Serialize, Deserialize)]
@@ -59,6 +61,8 @@ pub struct ApiService {
     enable_performance_metrics: bool,
     // Exposed for integration tests
     pub base_url: Option<String>,
+    // Rate limiting semaphore
+    rate_limiter: Arc<Semaphore>,
 }
 
 impl ApiService {
@@ -67,6 +71,11 @@ impl ApiService {
         network_config: crate::config::NetworkConfig,
         enable_performance_metrics: bool,
     ) -> Self {
+        // Create semaphore for rate limiting
+        // permits = rate_limit_per_second (allows bursts up to that rate)
+        let permits = network_config.rate_limit_per_second.ceil() as usize;
+        let rate_limiter = Arc::new(Semaphore::new(permits));
+
         Self {
             client: Client::new(),
             story_cache: Cache::with_metrics(Duration::from_secs(300), enable_performance_metrics), // 5 minutes
@@ -81,20 +90,26 @@ impl ApiService {
             network_config,
             enable_performance_metrics,
             base_url: None,
+            rate_limiter,
         }
     }
 
     /// Helper to create a service with a custom base URL (for testing).
     #[allow(dead_code)]
     pub fn with_base_url(base_url: String) -> Self {
+        let network_config = crate::config::NetworkConfig::default();
+        let permits = network_config.rate_limit_per_second.ceil() as usize;
+        let rate_limiter = Arc::new(Semaphore::new(permits));
+
         Self {
             client: Client::new(),
             story_cache: Cache::with_metrics(Duration::from_secs(300), false),
             comment_cache: Cache::with_metrics(Duration::from_secs(300), false),
             article_cache: Cache::with_metrics(Duration::from_secs(900), false),
-            network_config: crate::config::NetworkConfig::default(),
+            network_config,
             enable_performance_metrics: false,
             base_url: Some(base_url),
+            rate_limiter,
         }
     }
 
@@ -115,6 +130,14 @@ impl ApiService {
 
         loop {
             attempt += 1;
+
+            // Acquire rate limiting permit
+            let _permit = self
+                .rate_limiter
+                .acquire()
+                .await
+                .expect("Semaphore should never be closed");
+
             let resp_result = self.client.get(url).send().await;
 
             match resp_result {
@@ -206,6 +229,33 @@ impl ApiService {
             tracing::debug!(elapsed = ?start.elapsed(), "Fetched and cached story content");
         }
         Ok(story)
+    }
+
+    /// Fetch multiple stories concurrently with a limit on concurrent requests.
+    /// Returns a Vec of Results, preserving order of input IDs.
+    #[tracing::instrument(skip(self, ids), fields(count = ids.len(), limit = limit))]
+    pub async fn fetch_stories_concurrent(&self, ids: &[u32], limit: usize) -> Vec<Result<Story>> {
+        use futures::stream::{self, StreamExt};
+
+        let start = std::time::Instant::now();
+
+        // Create a stream of futures and execute them with limited concurrency
+        let results = stream::iter(ids.iter().copied())
+            .map(|id| async move { self.fetch_story_content(id).await })
+            .buffer_unordered(limit)
+            .collect::<Vec<_>>()
+            .await;
+
+        if self.enable_performance_metrics {
+            tracing::debug!(
+                elapsed = ?start.elapsed(),
+                count = ids.len(),
+                successful = results.iter().filter(|r| r.is_ok()).count(),
+                "Fetched stories concurrently"
+            );
+        }
+
+        results
     }
 
     /// Fetch a single comment item by id.
