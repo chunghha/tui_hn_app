@@ -15,6 +15,9 @@ tasks:
   test:
     cmds:
       - cargo test
+  bench:
+    cmds:
+      - cargo bench
   loc:
     cmds:
       - tokei . --exclude vendor

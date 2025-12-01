@@ -284,10 +284,8 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                 // Calculate available width for title
                 let prefix_len = 4 + 2 + // index + bookmark
                     if app.config.ui.list_view.show_score { 5 } else { 0 }; // score with spacing
-                let available_width = area.width.saturating_sub(prefix_len + 4) as usize; // 4 for borders/padding
 
-                // Wrap title if it's too long
-                let wrapped_title = textwrap::wrap(title, available_width.max(20));
+                let wrapped_title = calculate_wrapped_title(title, area.width, prefix_len);
 
                 // Create title line(s)
                 let mut title_lines = Vec::new();
@@ -1737,4 +1735,14 @@ fn render_theme_editor_overlay(app: &App, f: &mut Frame) {
             layout[2],
         );
     }
+}
+
+/// Calculate wrapped title lines based on available width
+pub fn calculate_wrapped_title(
+    title: &str,
+    area_width: u16,
+    prefix_len: u16,
+) -> Vec<std::borrow::Cow<'_, str>> {
+    let available_width = area_width.saturating_sub(prefix_len + 4) as usize; // 4 for borders/padding
+    textwrap::wrap(title, available_width.max(20))
 }
