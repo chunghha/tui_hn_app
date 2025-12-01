@@ -420,13 +420,15 @@ impl ApiService {
     pub async fn fetch_comment_tree(
         &self,
         root_ids: Vec<u32>,
+        max_depth: usize,
         token: Option<CancellationToken>,
     ) -> Result<Vec<crate::internal::models::CommentRow>> {
         let start = std::time::Instant::now();
         let mut rows = Vec::new();
-        // Limit total comments to prevent freezing on huge threads for now
+        // Limit total comments to prevent freezing on huge threads
+        // Increased from 100 to 500 since we now have depth limit
         let mut total_fetched = 0;
-        const MAX_COMMENTS: usize = 100;
+        const MAX_COMMENTS: usize = 500;
 
         for id in root_ids {
             if total_fetched >= MAX_COMMENTS {
@@ -437,8 +439,16 @@ impl ApiService {
             {
                 return Err(anyhow::anyhow!("Request cancelled"));
             }
-            self.fetch_comment_recursive(id, 0, None, &mut rows, &mut total_fetched, token.clone())
-                .await?;
+            self.fetch_comment_recursive(
+                id,
+                0,
+                max_depth,
+                None,
+                &mut rows,
+                &mut total_fetched,
+                token.clone(),
+            )
+            .await?;
         }
         if self.enable_performance_metrics {
             tracing::debug!(elapsed = ?start.elapsed(), fetched = total_fetched, "Fetched comment tree");
@@ -446,17 +456,19 @@ impl ApiService {
         Ok(rows)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fetch_comment_recursive<'a>(
         &'a self,
         id: u32,
         depth: usize,
+        max_depth: usize,
         parent_id: Option<u32>,
         rows: &'a mut Vec<crate::internal::models::CommentRow>,
         total_fetched: &'a mut usize,
         token: Option<CancellationToken>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
-            if *total_fetched >= 100 {
+            if *total_fetched >= 500 {
                 return Ok(());
             }
             if let Some(token) = &token
@@ -471,18 +483,25 @@ impl ApiService {
                     *total_fetched += 1;
                     let kids = comment.kids.clone();
 
+                    // Check if we should recurse
+                    let should_recurse = depth < max_depth;
+                    let has_kids = kids.as_ref().map(|k| !k.is_empty()).unwrap_or(false);
+                    let loaded_kids = should_recurse && has_kids;
+
                     rows.push(crate::internal::models::CommentRow {
                         comment,
                         depth,
-                        expanded: true,
+                        expanded: loaded_kids || !has_kids,
                         parent_id,
+                        loaded_kids, // Set based on whether we are about to recurse
                     });
 
-                    if let Some(kids) = kids {
+                    if should_recurse && let Some(kids) = kids {
                         for kid_id in kids {
                             self.fetch_comment_recursive(
                                 kid_id,
                                 depth + 1,
+                                max_depth,
                                 Some(id),
                                 rows,
                                 total_fetched,

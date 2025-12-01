@@ -41,6 +41,7 @@ pub struct CommentRow {
     pub depth: usize,
     pub expanded: bool,
     pub parent_id: Option<u32>,
+    pub loaded_kids: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

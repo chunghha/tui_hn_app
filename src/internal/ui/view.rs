@@ -12,6 +12,7 @@ use textwrap;
 
 use super::app::{App, InputMode, ViewMode};
 use super::sort::{SortBy, SortOrder};
+use crate::internal::models::Story;
 
 #[tracing::instrument(skip(app, f))]
 pub fn draw(app: &mut App, f: &mut Frame) {
@@ -112,21 +113,31 @@ fn render_progress_overlay(app: &App, f: &mut Frame) {
     match app.story_load_progress {
         Some((loaded, total)) => {
             let area = f.area();
-            let popup_width = 60.min(area.width - 4);
-            let popup_height = 5; // Reduced height
+            let popup_width = 50.min(area.width - 4);
+            let popup_height = 3; // Compact: title + progress bar only
             let popup_x = (area.width.saturating_sub(popup_width)) / 2;
             let popup_y = (area.height.saturating_sub(popup_height)) / 2;
             let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-            // Add spinner to title
             let spinner = app.get_spinner_char();
             let percent = match total {
                 0 => 0,
                 t => (loaded as f64 / t as f64 * 100.0) as u16,
             };
 
+            // Compact title with all info: spinner, action, progress, percentage
+            let title = format!(
+                "{} Loading Stories [{}/{}] {}%",
+                spinner, loaded, total, percent
+            );
+
             let block = Block::default()
-                .title(format!("{} Loading all stories", spinner))
+                .title(title)
+                .title_style(
+                    Style::default()
+                        .fg(app.theme.foreground)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.border))
                 .style(Style::default().bg(app.theme.background));
@@ -136,39 +147,26 @@ fn render_progress_overlay(app: &App, f: &mut Frame) {
 
             let inner_area = block.inner(popup_area);
 
-            // Split into sections for gauge and percentage
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Length(1), // Gauge
-                    Constraint::Length(1), // Percentage
-                ])
-                .split(inner_area);
-
-            // Gauge with label
+            // Single progress bar with visual indicator
             let gauge = ratatui::widgets::Gauge::default()
                 .gauge_style(
                     Style::default()
                         .fg(app.theme.selection_bg)
                         .bg(app.theme.background),
                 )
-                .label(format!("{}/{}", loaded, total))
-                .percent(percent);
-            f.render_widget(gauge, chunks[0]);
-
-            // Percentage text
-            let percent_text = Paragraph::new(format!("{}%", percent))
-                .style(Style::default().fg(app.theme.comment_time))
-                .alignment(Alignment::Center);
-            f.render_widget(percent_text, chunks[1]);
+                .ratio(percent as f64 / 100.0)
+                .label("");
+            f.render_widget(gauge, inner_area);
         }
         None => {}
     }
 }
 
 fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
+    use std::borrow::Cow;
+
     // Determine which stories to display based on view mode
-    let stories_to_display: Vec<_> = match app.view_mode {
+    let stories_to_display: Vec<(usize, Cow<Story>)> = match app.view_mode {
         ViewMode::Bookmarks => {
             // Convert bookmarked stories to Story objects for display
             app.bookmarks
@@ -180,7 +178,7 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                     app.stories
                         .iter()
                         .find(|s| s.id == bookmarked.id)
-                        .map(|story| (idx, story.clone()))
+                        .map(|story| (idx, Cow::Borrowed(story)))
                 })
                 .collect()
         }
@@ -201,7 +199,7 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                         descendants: viewed.descendants,
                         kids: None,
                     };
-                    (idx, story)
+                    (idx, Cow::Owned(story))
                 })
                 .collect()
         }
@@ -212,7 +210,7 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
                     .stories
                     .iter()
                     .enumerate()
-                    .map(|(i, s)| (i, s.clone()))
+                    .map(|(i, s)| (i, Cow::Borrowed(s)))
                     .collect(),
                 false => {
                     use crate::internal::search::SearchMode;
@@ -228,134 +226,183 @@ fn render_list(app: &mut App, f: &mut Frame, area: Rect) {
 
                             match app.search_query.mode {
                                 SearchMode::Title => title_match,
-                                SearchMode::Comments => {
-                                    // Search in cached comments (if available)
-                                    // For now, we don't have easy access to comments here
-                                    // This would require pre-fetching comments or maintaining a comment cache
-                                    // For v0.5.2, we'll just return false for comment-only search in list view
-                                    false
-                                }
-                                SearchMode::TitleAndComments => {
-                                    // In list view, we can only effectively search titles
-                                    title_match
-                                }
+                                SearchMode::Comments => false,
+                                SearchMode::TitleAndComments => title_match,
                             }
                         })
-                        .map(|(i, s)| (i, s.clone()))
+                        .map(|(i, s)| (i, Cow::Borrowed(s)))
                         .collect()
                 }
             }
         }
     };
 
-    let items: Vec<ListItem> = stories_to_display
-        .iter()
-        .enumerate()
-        .map(|(idx, (_, story))| {
-            let title = story.title.as_deref().unwrap_or("No Title");
-            let score = story.score.unwrap_or(0);
-            let by = story.by.as_deref().unwrap_or("unknown");
-            let comments = story.descendants.unwrap_or(0);
+    // Optimization: Only render visible items
+    // We calculate the visible range based on the current offset and area height
+    let offset = app.story_list_state.offset();
+    let height = area.height as usize;
+    let item_height = 2; // Title + Metadata
+    let buffer = 5; // Render a few extra items to ensure smooth scrolling
+    let num_visible = (height / item_height) + buffer;
 
-            // Extract domain from URL
-            let domain = story
-                .url
-                .as_ref()
-                .and_then(|url| crate::utils::url::extract_domain(url))
-                .map(|d| format!(" ({})", d))
-                .unwrap_or_default();
+    let start_index = offset;
+    let end_index = (start_index + num_visible).min(stories_to_display.len());
 
-            let time = story
-                .time
-                .as_ref()
-                .map(crate::utils::datetime::format_timestamp)
-                .unwrap_or_else(|| "unknown".to_string());
+    let items: Vec<ListItem> = (0..stories_to_display.len())
+        .map(|i| {
+            // If item is within visible range (with buffer), render it fully
+            if i >= start_index && i < end_index {
+                let (idx, story) = &stories_to_display[i];
+                let title = story.title.as_deref().unwrap_or("No Title");
+                let score = story.score.unwrap_or(0);
+                let by = story.by.as_deref().unwrap_or("unknown");
+                let comments = story.descendants.unwrap_or(0);
 
-            // Show score with leading space for proper alignment
-            let score = format!("{:3} ", score);
+                // Extract domain from URL
+                let domain = story
+                    .url
+                    .as_ref()
+                    .and_then(|url| crate::utils::url::extract_domain(url))
+                    .map(|d| format!(" ({})", d))
+                    .unwrap_or_default();
 
-            // Check if story is bookmarked
-            let bookmark_indicator = match app.bookmarks.contains(story.id) {
-                true => "★ ",
-                false => "",
-            };
+                let time = story
+                    .time
+                    .as_ref()
+                    .map(crate::utils::datetime::format_timestamp)
+                    .unwrap_or_else(|| "unknown".to_string());
 
-            // Build title line with optional fields based on config
-            let mut title_spans = vec![Span::styled(
-                format!("{:<4}", idx + 1),
-                Style::default().fg(app.theme.comment_time),
-            )];
+                // Show score with leading space for proper alignment
+                let score = format!("{:3} ", score);
 
-            // Add bookmark indicator
-            title_spans.push(Span::styled(
-                bookmark_indicator,
-                Style::default().fg(app.theme.selection_bg),
-            ));
+                // Check if story is bookmarked
+                let bookmark_indicator = match app.bookmarks.contains(story.id) {
+                    true => "★ ",
+                    false => "",
+                };
 
-            // Add score if configured
-            if app.config.ui.list_view.show_score {
-                title_spans.push(Span::styled(
-                    format!("{} ", score),
-                    Style::default().fg(app.theme.score),
-                ));
-            }
+                // Calculate available width for title
+                let prefix_len = 4 + 2 + // index + bookmark
+                    if app.config.ui.list_view.show_score { 5 } else { 0 }; // score with spacing
+                let available_width = area.width.saturating_sub(prefix_len + 4) as usize; // 4 for borders/padding
 
-            title_spans.push(Span::styled(
-                title,
-                Style::default().fg(app.theme.foreground),
-            ));
+                // Wrap title if it's too long
+                let wrapped_title = textwrap::wrap(title, available_width.max(20));
 
-            // Add domain if configured
-            if app.config.ui.list_view.show_domain {
-                title_spans.push(Span::styled(
-                    domain,
-                    Style::default().fg(app.theme.comment_time),
-                ));
-            }
+                // Create title line(s)
+                let mut title_lines = Vec::new();
+                for (i, title_part) in wrapped_title.iter().enumerate() {
+                    let line_spans = match i {
+                        0 => {
+                            // First line: include index, bookmark, score, and title
+                            let mut spans = vec![
+                                Span::styled(
+                                    format!("{:<4}", idx + 1),
+                                    Style::default().fg(app.theme.comment_time),
+                                ),
+                                Span::styled(
+                                    bookmark_indicator,
+                                    Style::default().fg(app.theme.selection_bg),
+                                ),
+                            ];
 
-            let title_line = Line::from(title_spans);
+                            if app.config.ui.list_view.show_score {
+                                spans.push(Span::styled(
+                                    format!("{} ", score),
+                                    Style::default().fg(app.theme.score),
+                                ));
+                            }
 
-            // Build metadata line with optional fields
-            let mut meta_spans = vec![Span::styled("    ", Style::default())]; // Indent
-            let mut first_field = true;
+                            spans.push(Span::styled(
+                                title_part.to_string(),
+                                Style::default().fg(app.theme.foreground),
+                            ));
 
-            // Add time if configured
-            if app.config.ui.list_view.show_age {
-                meta_spans.push(Span::styled(
-                    time,
-                    Style::default().fg(app.theme.comment_time),
-                ));
-                first_field = false;
-            }
+                            // Add domain on first line if configured and only one line
+                            if app.config.ui.list_view.show_domain && wrapped_title.len() == 1 {
+                                spans.push(Span::styled(
+                                    domain.clone(),
+                                    Style::default().fg(app.theme.comment_time),
+                                ));
+                            }
 
-            // Add comments if configured
-            if app.config.ui.list_view.show_comments {
-                if !first_field {
-                    meta_spans.push(Span::styled(" | ", Style::default().fg(app.theme.border)));
+                            spans
+                        }
+                        _ => {
+                            // Continuation lines: indent and show title part only
+                            vec![Span::styled(
+                                format!("    {}", title_part),
+                                Style::default().fg(app.theme.foreground),
+                            )]
+                        }
+                    };
+
+                    title_lines.push(Line::from(line_spans));
+                }
+
+                // If domain configured and title wrapped to multiple lines, add domain on last line
+                if app.config.ui.list_view.show_domain
+                    && wrapped_title.len() > 1
+                    && let Some(last_line) = title_lines.last_mut()
+                {
+                    last_line.spans.push(Span::styled(
+                        format!(" {}", domain),
+                        Style::default().fg(app.theme.comment_time),
+                    ));
+                }
+
+                // Build metadata line with optional fields
+                let mut meta_spans = vec![Span::styled("    ", Style::default())]; // Indent
+                let mut first_field = true;
+
+                // Add time if configured
+                if app.config.ui.list_view.show_age {
+                    meta_spans.push(Span::styled(
+                        time,
+                        Style::default().fg(app.theme.comment_time),
+                    ));
+                    first_field = false;
+                }
+
+                // Add comments if configured
+                if app.config.ui.list_view.show_comments {
+                    if !first_field {
+                        meta_spans.push(Span::styled(" | ", Style::default().fg(app.theme.border)));
+                    }
+                    meta_spans.push(Span::styled(
+                        format!("{} comments", comments),
+                        Style::default().fg(app.theme.comment_time),
+                    ));
+                    first_field = false;
+                }
+
+                // Always show author
+                match first_field {
+                    false => meta_spans.push(Span::styled(
+                        " | by ",
+                        Style::default().fg(app.theme.border),
+                    )),
+                    true => {
+                        meta_spans.push(Span::styled("by ", Style::default().fg(app.theme.border)))
+                    }
                 }
                 meta_spans.push(Span::styled(
-                    format!("{} comments", comments),
-                    Style::default().fg(app.theme.comment_time),
+                    by,
+                    Style::default().fg(app.theme.comment_author),
                 ));
-                first_field = false;
+
+                let meta_line = Line::from(meta_spans);
+
+                // Combine title lines with metadata line
+                let mut all_lines = title_lines;
+                all_lines.push(meta_line);
+
+                ListItem::new(all_lines)
+            } else {
+                // Render cheap empty item for off-screen items
+                // This maintains the list indices so scrolling works correctly
+                ListItem::new(Span::raw(""))
             }
-
-            // Always show author
-            match first_field {
-                false => meta_spans.push(Span::styled(
-                    " | by ",
-                    Style::default().fg(app.theme.border),
-                )),
-                true => meta_spans.push(Span::styled("by ", Style::default().fg(app.theme.border))),
-            }
-            meta_spans.push(Span::styled(
-                by,
-                Style::default().fg(app.theme.comment_author),
-            ));
-
-            let meta_line = Line::from(meta_spans);
-
-            ListItem::new(vec![title_line, meta_line])
         })
         .collect();
 

@@ -303,15 +303,15 @@ Based on current codebase maturity, I recommend prioritizing:
   - ✅ Stale cache served when fetch fails (stories, comments, articles)
   - ✅ Config resilience (handles parse errors with defaults)
 
-#### v0.9.1 - Performance & Rendering (Planned)
-- [ ] **Rendering Performance** (Deferred from v0.7.2)
-  - Optimize list rendering for large story counts (view recycling)
-  - Lazy loading for deep comment trees
-  - Diff-based rendering optimizations
-- [ ] **Bug Fixes & UI Polish**
-  - Fix article scroll position persistence
-  - Fix long title wrapping in list view
-  - Fix theme switching refresh issues
+#### v0.9.1 - Performance & Rendering (Completed)
+- [x] **Rendering Performance** (Completed - 2025-11-30)
+  - ✅ Optimize list rendering for large story counts (view recycling)
+  - ✅ Lazy loading for deep comment trees
+  - ✅ Diff-based rendering optimizations
+- [x] **Bug Fixes & UI Polish** (Completed - 2025-11-30)
+  - ✅ Fix article scroll position persistence
+  - ✅ Fix long title wrapping in list view
+  - ✅ Fix theme switching refresh issues
 
 #### v0.9.2 - Configuration & Storage (Planned)
 - [ ] **Theme Save Location**

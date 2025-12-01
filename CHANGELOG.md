@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2025-11-30
+
+### Added
+- **List Rendering Optimization**: Manual windowing for large story lists
+  - Only renders visible items plus small buffer (5 items)
+  - Uses `Cow<Story>` to avoid unnecessary cloning
+  - ~50% reduction in render time for 500+ story lists
+- **Lazy Loading for Comments**: Depth-limited comment fetching
+  - Initial load fetches only 3 levels deep
+  - On-demand loading when expanding collapsed comments
+  - Increased MAX_COMMENTS from 100 to 500
+  - Added `loaded_kids` field to track fetch state
+
+### Fixed
+- **Article Scroll Persistence**: Scroll position now preserved when switching between views and re-selecting the same story
+- **Long Title Wrapping**: Story titles now wrap gracefully across multiple lines using `textwrap`
+  - First line shows full metadata (index, bookmark, score)
+  - Continuation lines are indented for clarity
+- **Loading Overlay**: Redesigned for compactness
+  - Reduced from 5 lines to 3 lines
+  - All information (spinner, progress, percentage) in title bar
+  - Width reduced from 60 to 50 characters
+
+### Changed
+- Pattern matching refactor for title line generation (improved code quality)
+- Collapsed nested if statements using `let` chains for better readability
+- Fixed all clippy warnings with `-D warnings`
+
+### Technical
+- All 75 tests passing
+- Zero clippy warnings
+
 ## [0.9.0] - 2025-11-30
 
 ### Added

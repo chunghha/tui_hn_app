@@ -54,6 +54,7 @@ pub enum Action {
     SelectStory(Story, StoryListType),
     CommentsLoaded(Vec<CommentRow>),
     LoadMoreComments,
+    AppendComments(usize, Vec<CommentRow>),
     #[allow(dead_code)]
     ToggleCommentCollapse(usize),
     ToggleArticleView,
@@ -1444,49 +1445,62 @@ impl App {
             Action::SelectStory(story, list_type) => {
                 self.cancel_previous_request();
                 self.view_mode = ViewMode::StoryDetail;
+
+                // Check if we are selecting the same story to preserve article state
+                let same_story = self.article_for_story_id == Some(story.id);
+
                 self.selected_story = Some(story.clone());
                 self.current_list_type = list_type;
                 self.comments.clear();
                 self.comment_ids.clear();
                 self.loaded_comments_count = 0;
                 self.comments_scroll = 0;
-                self.article_content = None;
-                self.article_for_story_id = None;
-                self.article_scroll = 0;
-                self.article_loading = false;
+
+                if !same_story {
+                    self.article_content = None;
+                    self.article_for_story_id = None;
+                    self.article_scroll = 0;
+                    self.article_loading = false;
+                }
 
                 let api = self.api_service.clone();
                 let tx = self.action_tx.clone();
                 let token = self.get_cancellation_token();
 
-                // If the story has a URL, start fetching the article immediately.
+                // If the story has a URL, start fetching the article immediately if needed.
                 if let Some(url) = story.url.clone() {
-                    self.article_loading = true;
-                    let api_clone = api.clone();
-                    let tx_clone = tx.clone();
-                    let story_id = story.id;
-                    // Capture the list/category this selection came from for the response.
-                    let list_for_request = self.current_list_type;
-                    let token_clone = token.clone();
-                    tokio::spawn(async move {
-                        match api_clone.fetch_article_content(&url, token_clone).await {
-                            Ok(content) => {
-                                let _ = tx_clone.send(Action::ArticleLoaded(
-                                    list_for_request,
-                                    story_id,
-                                    content,
-                                ));
-                            }
-                            Err(e) => {
-                                if e.to_string() != "Request cancelled" {
-                                    let _ = tx_clone.send(Action::Error(format!(
-                                        "Failed to fetch article: {}",
-                                        e
-                                    )));
+                    // Fetch if it's a new story OR if we don't have content yet (and not loading)
+                    let should_fetch =
+                        !same_story || (self.article_content.is_none() && !self.article_loading);
+
+                    if should_fetch {
+                        self.article_loading = true;
+                        let api_clone = api.clone();
+                        let tx_clone = tx.clone();
+                        let story_id = story.id;
+                        // Capture the list/category this selection came from for the response.
+                        let list_for_request = self.current_list_type;
+                        let token_clone = token.clone();
+                        tokio::spawn(async move {
+                            match api_clone.fetch_article_content(&url, token_clone).await {
+                                Ok(content) => {
+                                    let _ = tx_clone.send(Action::ArticleLoaded(
+                                        list_for_request,
+                                        story_id,
+                                        content,
+                                    ));
+                                }
+                                Err(e) => {
+                                    if e.to_string() != "Request cancelled" {
+                                        let _ = tx_clone.send(Action::Error(format!(
+                                            "Failed to fetch article: {}",
+                                            e
+                                        )));
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
 
                 // Fetch comments in the background as before so they are available
@@ -1502,7 +1516,7 @@ impl App {
                         tokio::spawn(async move {
                             // Use fetch_comment_tree to get threaded comments
                             if let Ok(comment_rows) =
-                                api_clone.fetch_comment_tree(kids, token).await
+                                api_clone.fetch_comment_tree(kids, 3, token).await
                             {
                                 let _ = tx_clone.send(Action::CommentsLoaded(comment_rows));
                             }
@@ -1534,7 +1548,59 @@ impl App {
                     let _ = tx.send(Action::ClearNotification);
                 });
             }
+            Action::AppendComments(parent_index, new_rows) => {
+                // Insert new rows after the parent
+                // Verify parent index is still valid and matches expected depth
+                if parent_index < self.comments.len() {
+                    // let parent_depth = self.comments[parent_index].depth; // Unused
+                    // Insert after parent
+                    let mut insert_idx = parent_index + 1;
+                    for row in new_rows {
+                        self.comments.insert(insert_idx, row);
+                        insert_idx += 1;
+                    }
+                    // Mark parent as having loaded kids
+                    self.comments[parent_index].loaded_kids = true;
+                    // Ensure parent is expanded
+                    self.comments[parent_index].expanded = true;
+                }
+            }
             Action::ToggleCommentCollapse(index) => {
+                let mut should_fetch = false;
+                let mut kids_to_fetch = None;
+                let mut parent_depth = 0;
+
+                // Check if we need to fetch kids (immutable borrow)
+                if let Some(row) = self.comments.get(index)
+                    && !row.expanded
+                    && !row.loaded_kids
+                    && let Some(kids) = &row.comment.kids
+                    && !kids.is_empty()
+                {
+                    should_fetch = true;
+                    kids_to_fetch = Some(kids.clone());
+                    parent_depth = row.depth;
+                }
+
+                if should_fetch && let Some(kids) = kids_to_fetch {
+                    let api = self.api_service.clone();
+                    let tx = self.action_tx.clone();
+                    let token = self.get_cancellation_token();
+
+                    self.notify_info("Loading replies...");
+
+                    tokio::spawn(async move {
+                        if let Ok(mut new_rows) = api.fetch_comment_tree(kids, 3, token).await {
+                            // Adjust depth
+                            for r in &mut new_rows {
+                                r.depth += parent_depth + 1;
+                            }
+                            let _ = tx.send(Action::AppendComments(index, new_rows));
+                        }
+                    });
+                }
+
+                // Toggle expanded (mutable borrow)
                 if let Some(row) = self.comments.get_mut(index) {
                     row.expanded = !row.expanded;
                 }
@@ -2228,6 +2294,7 @@ mod tests {
                 depth: 0,
                 expanded: true,
                 parent_id: None,
+                loaded_kids: false,
             },
             CommentRow {
                 comment: Comment {
@@ -2241,6 +2308,7 @@ mod tests {
                 depth: 0,
                 expanded: true,
                 parent_id: None,
+                loaded_kids: false,
             },
         ];
 

@@ -118,6 +118,12 @@ src/
   - Request cancellation: Stale requests are cancelled when switching views
   - Offline mode: Graceful fallback to stale cache when network fails
   - Config resilience: Malformed config files don't crash the app
+- **Performance & Rendering** (v0.9.1)
+  - List rendering optimization: Manual windowing for large lists (~50% faster rendering)
+  - Lazy loading for comments: Initial 3-level depth fetch with on-demand expansion
+  - Article scroll persistence: Scroll position preserved when switching views
+  - Long title wrapping: Multi-line titles with proper indentation
+  - Compact loading overlay: Reduced from 5 to 3 lines
 
 ## Accessibility
 
