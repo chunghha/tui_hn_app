@@ -184,6 +184,10 @@ Example (abbreviated):
     // Examples: "Flexoki Light", "Flexoki Dark", "Solarized Dark"
     theme_name: "Gruvbox Dark",
 
+    // Directory where custom themes are stored and exported
+    // Defaults to ~/.config/tui-hn-app/themes/ on Linux/macOS
+    theme_directory: "/Users/username/.config/tui-hn-app/themes/",
+
     // Optional: path to a theme file or themes directory (defaults to "./themes")
     theme_file: "./themes",
 
@@ -195,6 +199,15 @@ Example (abbreviated):
     // where explicit Dark/Light variants in `theme_name` are honored verbatim.
     // Defaults to "xterm-ghostty".
     ghost_term_name: "xterm-ghostty",
+
+    // Optional: Accessibility Configuration (v0.8.0+)
+    accessibility: (
+        // Reduce motion (disable animations)
+        reduce_motion: false,
+        
+        // High contrast mode
+        high_contrast: false,
+    ),
 
     // Optional: UI Customization (v0.6.4+)
     ui: (

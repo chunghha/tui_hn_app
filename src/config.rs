@@ -175,14 +175,18 @@ pub struct AppConfig {
     /// Defaults to "./themes" so ThemeRegistry can watch that directory.
     #[serde(default = "default_theme_file")]
     pub theme_file: String,
+    /// Directory where custom themes are stored and exported
+    /// Defaults to platform-specific config directory (e.g., ~/.config/tui-hn-app/themes/)
+    #[serde(default = "default_theme_directory")]
+    pub theme_directory: String,
     /// If true, automatically switch a configured dark theme to its light variant
     /// when the runtime environment indicates a special terminal (e.g. TERM=xterm-ghostty)
     /// or when automatic switching is desired. Defaults to true.
     #[serde(default = "default_auto_switch_dark_to_light")]
     pub auto_switch_dark_to_light: bool,
-    /// The TERM value that should be recognized as the special \"ghost\" terminal
+    /// The TERM value that should be recognized as the special "ghost" terminal
     /// where explicit Dark/Light variants in `theme_name` must be honored instead
-    /// of being auto-switched. Defaults to \"xterm-ghostty\".
+    /// of being auto-switched. Defaults to "xterm-ghostty".
     #[serde(default = "default_ghost_term_name")]
     pub ghost_term_name: String,
     /// Custom keybindings
@@ -210,6 +214,20 @@ fn default_theme_file() -> String {
     "./themes".to_string()
 }
 
+fn default_theme_directory() -> String {
+    // Use platform-specific config directory
+    if let Some(config_dir) = dirs::config_dir() {
+        config_dir
+            .join("tui-hn-app")
+            .join("themes")
+            .to_string_lossy()
+            .to_string()
+    } else {
+        // Fallback to relative path if config_dir not available
+        "./themes".to_string()
+    }
+}
+
 fn default_auto_switch_dark_to_light() -> bool {
     true
 }
@@ -231,6 +249,7 @@ impl Default for AppConfig {
         Self {
             theme_name: default_theme_name(),
             theme_file: default_theme_file(),
+            theme_directory: default_theme_directory(),
             auto_switch_dark_to_light: default_auto_switch_dark_to_light(),
             ghost_term_name: default_ghost_term_name(),
             keybindings: None,
@@ -333,6 +352,7 @@ impl AppConfig {
 
         replace_str(&mut new_content, "theme_name", &self.theme_name);
         replace_str(&mut new_content, "theme_file", &self.theme_file);
+        replace_str(&mut new_content, "theme_directory", &self.theme_directory);
         // Ensure boolean and ghost-term keys are updated when saving config so a
         // minimal config file containing these keys will be preserved/updated.
         replace_val(

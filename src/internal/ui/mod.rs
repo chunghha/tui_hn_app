@@ -1,4 +1,5 @@
 pub mod app;
+pub mod keybinding_validator;
 pub mod keybindings;
 pub mod keybindings_default;
 pub mod log_viewer;

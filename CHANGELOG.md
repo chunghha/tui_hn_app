@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2025-11-30
+
+### Added
+- **Configuration**: Added `theme_directory` config option to specify where themes are stored (defaults to `~/.config/tui-hn-app/themes/`).
+- **Validation**: Added startup check for keybinding conflicts with warning notifications.
+- **Theme Management**: Themes are now auto-discovered from the configured theme directory.
+
 ## [0.9.1] - 2025-11-30
 
 ### Added
@@ -309,7 +316,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.6.1] - 2025-11-28
+
+
+## [0.9.1] - 2025-11-28
 
 ### Added
 - **UI Customization (Initial)**: Configurable padding for UI elements

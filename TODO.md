@@ -313,12 +313,12 @@ Based on current codebase maturity, I recommend prioritizing:
   - ✅ Fix long title wrapping in list view
   - ✅ Fix theme switching refresh issues
 
-#### v0.9.2 - Configuration & Storage (Planned)
-- [ ] **Theme Save Location**
-  - Configurable theme directory (e.g., `~/.config/tui-hn-app/themes/`)
-  - Auto-create directory if missing
-- [ ] **Keybinding Conflict Detection**
-  - Warn user if custom bindings conflict
+#### v0.9.2 - Configuration & Storage (Completed - 2025-11-30)
+- [x] **Theme Save Location**
+  - ✅ Configurable theme directory (e.g., `~/.config/tui-hn-app/themes/`)
+  - ✅ Auto-create directory if missing
+- [x] **Keybinding Conflict Detection**
+  - ✅ Warn user if custom bindings conflict
 
 #### v0.9.3 - Release Prep & Quality (Planned)
 - [ ] **Advanced Testing**

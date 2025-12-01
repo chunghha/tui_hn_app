@@ -37,7 +37,7 @@ pub enum InputMode {
 }
 
 /// Actions/messages sent through the app action channel.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Quit,
     NavigateUp,
@@ -342,7 +342,8 @@ impl App {
 
         // Discover available themes. Respect a configured `theme_file` if provided,
         // and fall back to common locations (./themes and themes next to the executable).
-        let available_themes = Self::discover_all_themes(&config.theme_file);
+        let available_themes =
+            Self::discover_all_themes(&config.theme_directory, &config.theme_file);
 
         // Startup diagnostics (help debug initial theme selection)
         tracing::info!(
@@ -409,13 +410,9 @@ impl App {
             keybindings.merge_config(custom_bindings);
         }
 
-        // Initialize log viewer
-        let log_dir = config.logging.log_directory.as_deref().unwrap_or("logs");
-        let log_viewer = crate::internal::ui::log_viewer::LogViewer::new(log_dir.to_string());
-
         tracing::info!(elapsed = ?start.elapsed(), "App initialized");
 
-        Self {
+        let mut app = Self {
             running: true,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             view_mode: ViewMode::List,
@@ -447,7 +444,7 @@ impl App {
             spinner_state: 0,
             last_spinner_update: None,
             show_help: false,
-            help_page: 1,
+            help_page: 0,
             input_mode: InputMode::Normal,
             search_query: crate::internal::search::SearchQuery::default(),
             search_history: match crate::internal::search::SearchHistory::load_or_create(20) {
@@ -459,7 +456,7 @@ impl App {
             },
             temp_search_input: String::new(),
             history_index: None,
-            config,
+            config: config.clone(),
             action_tx,
             action_rx,
             bookmarks,
@@ -467,8 +464,36 @@ impl App {
             history,
             keybindings,
             theme_editor: crate::internal::ui::theme_editor::ThemeEditor::new(theme.clone()),
-            log_viewer,
+            log_viewer: crate::internal::ui::log_viewer::LogViewer::new(
+                config
+                    .logging
+                    .log_directory
+                    .as_deref()
+                    .unwrap_or("logs")
+                    .to_string(),
+            ),
+        };
+
+        // Re-check for conflicts to show notification and log details
+        if let Some(kb_config) = &config.keybindings {
+            let conflicts = crate::internal::ui::keybinding_validator::detect_conflicts(kb_config);
+            if !conflicts.is_empty() {
+                for conflict in &conflicts {
+                    tracing::warn!(
+                        "Keybinding conflict in {}: {} (keys: {})",
+                        conflict.context,
+                        conflict.description,
+                        conflict.keys
+                    );
+                }
+                app.notify_warning(format!(
+                    "Found {} keybinding conflicts. Check logs for details.",
+                    conflicts.len()
+                ));
+            }
         }
+
+        app
     }
 
     /// Set an info notification
@@ -536,23 +561,43 @@ impl App {
         "dark".to_string()
     }
 
-    fn discover_all_themes(configured: &str) -> Vec<(String, String)> {
+    fn discover_all_themes(theme_directory: &str, configured: &str) -> Vec<(String, String)> {
+        // Auto-create theme_directory if it doesn't exist
+        let theme_dir_path = PathBuf::from(theme_directory);
+        if !theme_dir_path.exists() {
+            if let Err(e) = std::fs::create_dir_all(&theme_dir_path) {
+                tracing::warn!(
+                    "Failed to create theme directory at {}: {}",
+                    theme_dir_path.display(),
+                    e
+                );
+            } else {
+                tracing::info!("Created theme directory at {}", theme_dir_path.display());
+            }
+        }
+
         // Collect candidate theme locations in priority order:
-        // 1. Explicit configured path (if non-empty)
-        // 2. ./themes in current working directory
-        // 3. <exe_dir>/themes (next to executable)
+        // 1. Configured theme_directory (from config)
+        // 2. Explicit configured path (theme_file if non-empty)
+        // 3. ./themes in current working directory
+        // 4. <exe_dir>/themes (next to executable)
         let mut themes = Vec::new();
         let mut candidates: Vec<PathBuf> = Vec::new();
 
-        // 1) Configured path (may be a file or directory)
+        // 1) Configured theme_directory
+        if !theme_directory.trim().is_empty() {
+            candidates.push(theme_dir_path.clone());
+        }
+
+        // 2) Configured theme_file path (may be a file or directory)
         if !configured.trim().is_empty() {
             candidates.push(PathBuf::from(configured));
         }
 
-        // 2) Current working directory ./themes
+        // 3) Current working directory ./themes
         candidates.push(PathBuf::from("themes"));
 
-        // 3) themes next to the executable (if available)
+        // 4) themes next to the executable (if available)
         if let Ok(exe) = std::env::current_exe()
             && let Some(dir) = exe.parent()
         {
@@ -1198,30 +1243,22 @@ impl App {
                 self.theme_editor.toggle(&self.theme);
             }
             Action::ExportTheme(name) => {
-                // Export current theme from theme editor
-                if self.theme_editor.active {
-                    // 1. Save current theme
-                    match self.export_theme_to_file(&name, None) {
-                        Ok(path) => {
-                            self.notify_info(format!("Saved theme to {}", path.display()));
-                        }
-                        Err(e) => {
-                            self.notify_error(format!("Error saving theme: {}", e));
-                        }
-                    }
+                // First, save the main theme
+                if let Err(e) = self.export_theme_to_file(&name, None) {
+                    eprintln!("Failed to save main theme: {}", e);
+                    self.notify_error(format!("Failed to save theme: {}", e));
+                } else {
+                    self.notify_info(format!("Saved theme to {}", name));
+                }
 
-                    // 2. Generate and save complementary theme
-                    let is_dark = self.theme_editor.is_dark_theme();
-                    let complementary = self.theme_editor.generate_complementary();
-                    let suffix = match is_dark {
-                        true => "_light",
-                        false => "_dark",
-                    };
-                    let comp_name = format!("{}{}", name, suffix);
+                // Then, generate and save the complementary theme
+                let is_dark = self.theme_editor.is_dark_theme();
+                let complementary = self.theme_editor.generate_complementary();
+                let suffix = if is_dark { "_light" } else { "_dark" };
+                let comp_name = format!("{}{}", name, suffix);
 
-                    if let Err(e) = self.export_theme_to_file(&comp_name, Some(&complementary)) {
-                        eprintln!("Failed to save complementary theme: {}", e);
-                    }
+                if let Err(e) = self.export_theme_to_file(&comp_name, Some(&complementary)) {
+                    eprintln!("Failed to save complementary theme: {}", e);
                 }
             }
             Action::Back => {
