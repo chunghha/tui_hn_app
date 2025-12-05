@@ -1,6 +1,6 @@
 [package]
 name = "tui-hn-app"
-version = "0.9.4"
+version = "0.9.5"
 edition = "2024"
 
 [dependencies]
@@ -40,4 +40,3 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 [[bench]]
 name = "render_benchmark"
 harness = false
-

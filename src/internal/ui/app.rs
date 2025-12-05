@@ -729,6 +729,9 @@ impl App {
             }
         };
 
+        // Helper to normalize theme names for comparison (replace hyphens/underscores with spaces)
+        let normalize = |s: &str| -> String { s.replace(['-', '_'], " ") };
+
         // Helper to check if a theme entry matches our target criteria
         let matches = |path: &str, mode: &str| -> bool {
             let stem = Path::new(path)
@@ -736,8 +739,12 @@ impl App {
                 .and_then(|s| s.to_str())
                 .unwrap_or("");
 
+            // Normalize both stem and target_name for comparison
+            let normalized_stem = normalize(stem);
+            let normalized_target = normalize(target_name);
+
             // Name match?
-            if !stem.eq_ignore_ascii_case(target_name) {
+            if !normalized_stem.eq_ignore_ascii_case(&normalized_target) {
                 return false;
             }
 
